@@ -1,0 +1,135 @@
+{
+  "_comment": "FAO-56 Table 11 crop coefficients and growth stage durations (days). Sources: FAO Irrigation and Drainage Paper 56, Allen et al. 1998.",
+  "_fields": {
+    "kc_ini":  "Crop coefficient — initial stage (sparse cover)",
+    "kc_mid":  "Crop coefficient — mid-season (full cover, peak demand)",
+    "kc_end":  "Crop coefficient — late season / harvest",
+    "l_ini":   "Duration of initial stage in days",
+    "l_dev":   "Duration of crop development stage in days",
+    "l_mid":   "Duration of mid-season stage in days",
+    "l_late":  "Duration of late-season stage in days"
+  },
+  "crops": [
+    {
+      "id":     "tomato",
+      "name":   "Tomato",
+      "kc_ini": 0.60,
+      "kc_mid": 1.15,
+      "kc_end": 0.80,
+      "l_ini":  30,
+      "l_dev":  40,
+      "l_mid":  40,
+      "l_late": 25
+    },
+    {
+      "id":     "pumpkin",
+      "name":   "Pumpkin / Winter Squash",
+      "kc_ini": 0.50,
+      "kc_mid": 1.00,
+      "kc_end": 0.80,
+      "l_ini":  20,
+      "l_dev":  30,
+      "l_mid":  30,
+      "l_late": 20
+    },
+    {
+      "id":     "bean_green",
+      "name":   "Bean (green / snap)",
+      "kc_ini": 0.50,
+      "kc_mid": 1.05,
+      "kc_end": 0.90,
+      "l_ini":  20,
+      "l_dev":  30,
+      "l_mid":  30,
+      "l_late": 10
+    },
+    {
+      "id":     "pepper",
+      "name":   "Pepper",
+      "kc_ini": 0.60,
+      "kc_mid": 1.05,
+      "kc_end": 0.90,
+      "l_ini":  30,
+      "l_dev":  40,
+      "l_mid":  40,
+      "l_late": 20
+    },
+    {
+      "id":     "cucumber",
+      "name":   "Cucumber",
+      "kc_ini": 0.60,
+      "kc_mid": 1.00,
+      "kc_end": 0.75,
+      "l_ini":  20,
+      "l_dev":  30,
+      "l_mid":  40,
+      "l_late": 15
+    },
+    {
+      "id":     "zucchini",
+      "name":   "Zucchini / Courgette",
+      "kc_ini": 0.50,
+      "kc_mid": 0.95,
+      "kc_end": 0.75,
+      "l_ini":  25,
+      "l_dev":  35,
+      "l_mid":  25,
+      "l_late": 15
+    },
+    {
+      "id":     "eggplant",
+      "name":   "Eggplant / Aubergine",
+      "kc_ini": 0.60,
+      "kc_mid": 1.05,
+      "kc_end": 0.90,
+      "l_ini":  30,
+      "l_dev":  45,
+      "l_mid":  40,
+      "l_late": 25
+    },
+    {
+      "id":     "lettuce",
+      "name":   "Lettuce",
+      "kc_ini": 0.70,
+      "kc_mid": 1.00,
+      "kc_end": 0.95,
+      "l_ini":  20,
+      "l_dev":  30,
+      "l_mid":  15,
+      "l_late": 10
+    },
+    {
+      "id":     "carrot",
+      "name":   "Carrot",
+      "kc_ini": 0.70,
+      "kc_mid": 1.05,
+      "kc_end": 0.95,
+      "l_ini":  20,
+      "l_dev":  30,
+      "l_mid":  50,
+      "l_late": 20
+    },
+    {
+      "id":     "potato",
+      "name":   "Potato",
+      "kc_ini": 0.50,
+      "kc_mid": 1.15,
+      "kc_end": 0.75,
+      "l_ini":  25,
+      "l_dev":  30,
+      "l_mid":  45,
+      "l_late": 30
+    },
+    {
+      "id":     "onion_dry",
+      "name":   "Onion (dry bulb)",
+      "kc_ini": 0.70,
+      "kc_mid": 1.05,
+      "kc_end": 0.75,
+      "l_ini":  15,
+      "l_dev":  25,
+      "l_mid":  70,
+      "l_late": 40
+    }
+  ]
+}

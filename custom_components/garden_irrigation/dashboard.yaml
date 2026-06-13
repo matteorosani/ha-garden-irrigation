@@ -1,0 +1,114 @@
+# Garden Irrigation — sample Lovelace view
+#
+# HOW TO ADD THIS TO YOUR DASHBOARD
+# ──────────────────────────────────
+# Open your dashboard → Edit → ⋮ → "Edit in YAML", then paste this view.
+#
+# ENTITY ID PREFIX
+# ─────────────────
+# Replace every occurrence of  vegetable_bed  with your zone's slug.
+# Zone "Vegetable Bed" → vegetable_bed
+# Zone "Tomatoes East" → tomatoes_east
+# Tip: Developer Tools → States → filter by "garden" to see exact IDs.
+
+views:
+  - title: Vegetable Bed
+    icon: mdi:sprinkler-variant
+    cards:
+
+      # ── Status row ────────────────────────────────────────────────────────────
+      - type: glance
+        title: Today
+        columns: 3
+        entities:
+          - entity: sensor.vegetable_bed_status
+            name: Status
+          - entity: sensor.vegetable_bed_watering_duration
+            name: Duration
+          - entity: sensor.vegetable_bed_rain_yesterday
+            name: Rain yesterday
+
+      # ── Bucket gauge ──────────────────────────────────────────────────────────
+      - type: gauge
+        entity: sensor.vegetable_bed_bucket_percentage
+        name: Soil Moisture
+        unit: "%"
+        min: 0
+        max: 100
+        needle: true
+        severity:
+          green: 50
+          yellow: 25
+          red: 0
+
+      # ── Bucket details ────────────────────────────────────────────────────────
+      - type: entities
+        title: Water Balance
+        show_header_toggle: false
+        entities:
+          - entity: sensor.vegetable_bed_bucket_level
+            name: Current level
+          - type: attribute
+            entity: sensor.vegetable_bed_bucket_level
+            attribute: deficit_mm
+            name: Deficit (mm to refill)
+            icon: mdi:water-minus
+          - type: attribute
+            entity: sensor.vegetable_bed_bucket_level
+            attribute: low_threshold_mm
+            name: Watering trigger
+            icon: mdi:alert-circle-outline
+          - type: divider
+          - entity: button.vegetable_bed_record_irrigation
+            name: Record irrigation (automation ran)
+            action_name: Record
+          - entity: button.vegetable_bed_reset_bucket
+            name: Reset bucket (manual watering)
+            action_name: Reset
+
+      # ── Today's calculation ───────────────────────────────────────────────────
+      - type: entities
+        title: Today's Calculation
+        show_header_toggle: false
+        entities:
+          - entity: sensor.vegetable_bed_et_today
+            name: Reference ET₀
+          - entity: sensor.vegetable_bed_crop_coefficient_kc
+            name: Crop coefficient (Kc)
+          - type: attribute
+            entity: sensor.vegetable_bed_et_today
+            attribute: et_crop_mm
+            name: Crop consumption (ET₀ × Kc)
+            icon: mdi:water-minus-outline
+          - type: divider
+          - entity: sensor.vegetable_bed_watering_duration
+            name: Recommended duration
+          - type: attribute
+            entity: sensor.vegetable_bed_watering_duration
+            attribute: volume_liters
+            name: Volume to deliver
+            icon: mdi:water
+          - type: attribute
+            entity: sensor.vegetable_bed_watering_duration
+            attribute: skip_reason
+            name: Skip reason (if any)
+            icon: mdi:information-outline
+
+      # ── 7-day history ─────────────────────────────────────────────────────────
+      - type: history-graph
+        title: Soil Water — 7 days
+        hours_to_show: 168
+        entities:
+          - entity: sensor.vegetable_bed_bucket_level
+            name: Bucket level (mm)
+          - entity: sensor.vegetable_bed_rain_yesterday
+            name: Rain (mm)
+
+      - type: history-graph
+        title: ET₀ & Crop Coefficient — 7 days
+        hours_to_show: 168
+        entities:
+          - entity: sensor.vegetable_bed_et_today
+            name: ET₀ (mm/day)
+          - entity: sensor.vegetable_bed_crop_coefficient_kc
+            name: Kc
