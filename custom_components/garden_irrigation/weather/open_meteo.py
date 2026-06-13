@@ -23,6 +23,7 @@ forecast — if significant rain is coming in the next ~36 hours we wait.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -35,13 +36,15 @@ _LOGGER = logging.getLogger(__name__)
 _BASE_URL = "https://api.open-meteo.com/v1/forecast"
 
 # Daily variables requested from the API
-_DAILY_VARS = ",".join([
-    "temperature_2m_max",
-    "temperature_2m_min",
-    "precipitation_sum",
-    "wind_speed_10m_max",        # optional — for future Penman-Monteith
-    "relative_humidity_2m_mean", # optional — same
-])
+_DAILY_VARS = ",".join(
+    [
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "precipitation_sum",
+        "wind_speed_10m_max",  # optional — for future Penman-Monteith
+        "relative_humidity_2m_mean",  # optional — same
+    ]
+)
 
 
 class OpenMeteoProvider:
@@ -56,17 +59,18 @@ class OpenMeteoProvider:
                 In production, pass ``async_get_clientsession(hass)`` so
                 Home Assistant manages the connection pool and cleanup.
                 In tests, pass a mock.
+
     """
 
     def __init__(
         self,
-        latitude:  float,
+        latitude: float,
         longitude: float,
-        session:   aiohttp.ClientSession,
+        session: aiohttp.ClientSession,
     ) -> None:
-        self._latitude  = latitude
+        self._latitude = latitude
         self._longitude = longitude
-        self._session   = session
+        self._session = session
 
     async def get_data(self) -> WeatherData:
         """
@@ -79,19 +83,21 @@ class OpenMeteoProvider:
         Raises
         ------
         WeatherProviderError  — on any network error or unexpected response shape.
+
         """
         params: dict[str, Any] = {
-            "latitude":     self._latitude,
-            "longitude":    self._longitude,
-            "daily":        _DAILY_VARS,
-            "past_days":    1,
+            "latitude": self._latitude,
+            "longitude": self._longitude,
+            "daily": _DAILY_VARS,
+            "past_days": 1,
             "forecast_days": 2,
-            "timezone":     "auto",   # dates returned in local timezone
+            "timezone": "auto",  # dates returned in local timezone
         }
 
         _LOGGER.debug(
             "Fetching Open-Meteo data for (%.4f, %.4f)",
-            self._latitude, self._longitude,
+            self._latitude,
+            self._longitude,
         )
 
         try:
@@ -108,9 +114,7 @@ class OpenMeteoProvider:
                 f"Open-Meteo returned HTTP {err.status}: {err.message}"
             ) from err
         except aiohttp.ClientError as err:
-            raise WeatherProviderError(
-                f"Open-Meteo request failed: {err}"
-            ) from err
+            raise WeatherProviderError(f"Open-Meteo request failed: {err}") from err
         except TimeoutError as err:
             raise WeatherProviderError(
                 "Open-Meteo request timed out after 10 s"
@@ -145,7 +149,8 @@ class OpenMeteoProvider:
         if temp_max < temp_min:
             _LOGGER.warning(
                 "Open-Meteo: temp_max (%.1f) < temp_min (%.1f) — swapping",
-                temp_max, temp_min,
+                temp_max,
+                temp_min,
             )
             temp_max, temp_min = temp_min, temp_max
 
@@ -155,41 +160,43 @@ class OpenMeteoProvider:
         # ── Forecast precipitation: today remaining + tomorrow (index 1+2) ──
         # Combining both gives a ~36-hour forward window, which is appropriate
         # when deciding whether to skip morning irrigation.
-        forecast_today    = _optional_float(daily["precipitation_sum"][1], default=0.0)
+        forecast_today = _optional_float(daily["precipitation_sum"][1], default=0.0)
         forecast_tomorrow = _optional_float(daily["precipitation_sum"][2], default=0.0)
-        forecast_precip_mm = (forecast_today if forecast_today is not None else 0.0) + (forecast_tomorrow if forecast_tomorrow is not None else 0.0)
+        forecast_precip_mm = (forecast_today if forecast_today is not None else 0.0) + (
+            forecast_tomorrow if forecast_tomorrow is not None else 0.0
+        )
 
         # ── Optional fields (logged but not required) ──────────────────────
         wind_speed_ms: float | None = None
-        humidity_pct:  float | None = None
+        humidity_pct: float | None = None
 
-        try:
+        with contextlib.suppress(KeyError, IndexError):
             wind_speed_ms = _optional_float(daily["wind_speed_10m_max"][1])
-        except (KeyError, IndexError):
-            pass
 
-        try:
+        with contextlib.suppress(KeyError, IndexError):
             humidity_pct = _optional_float(daily["relative_humidity_2m_mean"][1])
-        except (KeyError, IndexError):
-            pass
 
         _LOGGER.debug(
             "Parsed weather: Tmin=%.1f Tmax=%.1f rain_yesterday=%.1f mm "
             "forecast_36h=%.1f mm",
-            temp_min, temp_max, precipitation_mm, forecast_precip_mm,
+            temp_min,
+            temp_max,
+            precipitation_mm,
+            forecast_precip_mm,
         )
 
         return WeatherData(
-            temp_min           = temp_min,
-            temp_max           = temp_max,
-            precipitation_mm   = precipitation_mm if precipitation_mm is not None else 0.0,
-            forecast_precip_mm = forecast_precip_mm,
-            wind_speed_ms      = wind_speed_ms,
-            humidity_pct       = humidity_pct,
+            temp_min=temp_min,
+            temp_max=temp_max,
+            precipitation_mm=precipitation_mm if precipitation_mm is not None else 0.0,
+            forecast_precip_mm=forecast_precip_mm,
+            wind_speed_ms=wind_speed_ms,
+            humidity_pct=humidity_pct,
         )
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _require_float(value: Any, field: str) -> float:
     """Return ``float(value)`` or raise ``ValueError`` if None / unconvertible."""

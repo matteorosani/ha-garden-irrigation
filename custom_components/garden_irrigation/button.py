@@ -28,10 +28,12 @@ async def async_setup_entry(
 ) -> None:
     """Create button entities for this zone."""
     coordinator: ZoneCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
-        ResetBucketButton(coordinator, entry),
-        RecordIrrigationButton(coordinator, entry),
-    ])
+    async_add_entities(
+        [
+            ResetBucketButton(coordinator, entry),
+            RecordIrrigationButton(coordinator, entry),
+        ]
+    )
 
 
 class ResetBucketButton(ButtonEntity):
@@ -43,22 +45,22 @@ class ResetBucketButton(ButtonEntity):
     """
 
     _attr_has_entity_name = True
-    _attr_icon            = "mdi:bucket-outline"
+    _attr_icon = "mdi:bucket-outline"
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         self._coordinator = coordinator
-        self._entry       = entry
+        self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_reset_bucket"
-        self._attr_name      = "Reset bucket"
+        self._attr_name = "Reset bucket"
 
     @cached_property
     def device_info(self) -> DeviceInfo:
         """Group this button under the same device as the sensors."""
         return DeviceInfo(
-            identifiers = {(DOMAIN, self._entry.entry_id)},
-            name        = self._entry.title,
-            manufacturer= "Garden Irrigation",
-            model       = "Drip Irrigation Zone",
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=self._entry.title,
+            manufacturer="Garden Irrigation",
+            model="Drip Irrigation Zone",
         )
 
     async def async_press(self) -> None:
@@ -81,21 +83,21 @@ class RecordIrrigationButton(ButtonEntity):
     """
 
     _attr_has_entity_name = True
-    _attr_icon            = "mdi:check-circle-outline"
+    _attr_icon = "mdi:check-circle-outline"
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         self._coordinator = coordinator
-        self._entry       = entry
+        self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_record_irrigation"
-        self._attr_name      = "Record irrigation"
+        self._attr_name = "Record irrigation"
 
     @cached_property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            identifiers  = {(DOMAIN, self._entry.entry_id)},
-            name         = self._entry.title,
-            manufacturer = "Garden Irrigation",
-            model        = "Drip Irrigation Zone",
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=self._entry.title,
+            manufacturer="Garden Irrigation",
+            model="Drip Irrigation Zone",
         )
 
     async def async_press(self) -> None:

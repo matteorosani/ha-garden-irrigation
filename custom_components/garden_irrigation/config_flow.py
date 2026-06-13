@@ -22,8 +22,12 @@ from datetime import date
 from typing import Any
 
 import voluptuous as vol
-
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
@@ -43,10 +47,10 @@ from .const import (
 )
 from .kc import available_crops
 
-
 # ── Schema builders ────────────────────────────────────────────────────────────
 # Separated from the flow classes so both ConfigFlow and OptionsFlow can
 # call them with optional defaults (for pre-filling the options form).
+
 
 def _step1_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     """Schema for step 1: zone identity."""
@@ -74,8 +78,7 @@ def _step2_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     # Build the crop options list from the bundled crops.json.
     # Done at call time (not module load) so the file is read after HA starts.
     crop_options = [
-        selector.SelectOptionDict(value=c.id, label=c.name)
-        for c in available_crops()
+        selector.SelectOptionDict(value=c.id, label=c.name) for c in available_crops()
     ]
 
     return vol.Schema(
@@ -148,6 +151,7 @@ def _step2_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _normalise_time(value: str) -> str:
     """
     Normalise a time string to "HH:MM".
@@ -181,6 +185,7 @@ def _validate_step2(data: dict[str, Any]) -> dict[str, str]:
 
 
 # ── Config flow ────────────────────────────────────────────────────────────────
+
 
 class GardenIrrigationConfigFlow(ConfigFlow, domain=DOMAIN):
     """
@@ -242,11 +247,14 @@ class GardenIrrigationConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> "GardenIrrigationOptionsFlow":
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> GardenIrrigationOptionsFlow:
         return GardenIrrigationOptionsFlow(config_entry)
 
 
 # ── Options flow ───────────────────────────────────────────────────────────────
+
 
 class GardenIrrigationOptionsFlow(OptionsFlow):
     """

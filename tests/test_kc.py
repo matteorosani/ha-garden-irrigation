@@ -25,27 +25,32 @@ import json
 from datetime import date
 
 import pytest
-
 from garden_irrigation.kc import (
     CropDefinition,
+    _lerp,
+    available_crops,
+    get_crop,
     kc_for_day,
     kc_for_zone,
     load_crops,
-    get_crop,
-    available_crops,
-    _lerp,
 )
 
-
 # ── Fixtures ───────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def simple_crop() -> CropDefinition:
     """A crop with round numbers so expected Kc is easy to compute by hand."""
     return CropDefinition(
-        id="test_crop", name="Test Crop",
-        kc_ini=0.5, kc_mid=1.0, kc_end=0.8,
-        l_ini=10, l_dev=20, l_mid=30, l_late=10,
+        id="test_crop",
+        name="Test Crop",
+        kc_ini=0.5,
+        kc_mid=1.0,
+        kc_end=0.8,
+        l_ini=10,
+        l_dev=20,
+        l_mid=30,
+        l_late=10,
     )
 
 
@@ -55,14 +60,26 @@ def crops_json(tmp_path) -> str:
     data = {
         "crops": [
             {
-                "id": "alpha", "name": "Alpha",
-                "kc_ini": 0.6, "kc_mid": 1.1, "kc_end": 0.7,
-                "l_ini": 10, "l_dev": 20, "l_mid": 30, "l_late": 10,
+                "id": "alpha",
+                "name": "Alpha",
+                "kc_ini": 0.6,
+                "kc_mid": 1.1,
+                "kc_end": 0.7,
+                "l_ini": 10,
+                "l_dev": 20,
+                "l_mid": 30,
+                "l_late": 10,
             },
             {
-                "id": "beta", "name": "Beta",
-                "kc_ini": 0.4, "kc_mid": 0.9, "kc_end": 0.6,
-                "l_ini": 15, "l_dev": 25, "l_mid": 20, "l_late": 15,
+                "id": "beta",
+                "name": "Beta",
+                "kc_ini": 0.4,
+                "kc_mid": 0.9,
+                "kc_end": 0.6,
+                "l_ini": 15,
+                "l_dev": 25,
+                "l_mid": 20,
+                "l_late": 15,
             },
         ]
     }
@@ -72,6 +89,7 @@ def crops_json(tmp_path) -> str:
 
 
 # ── _lerp ──────────────────────────────────────────────────────────────────────
+
 
 class TestLerp:
     def test_start(self):
@@ -96,6 +114,7 @@ class TestLerp:
 
 # ── CropDefinition ─────────────────────────────────────────────────────────────
 
+
 class TestCropDefinition:
     def test_total_days(self, simple_crop):
         assert simple_crop.total_days == 70  # 10+20+30+10
@@ -107,8 +126,8 @@ class TestCropDefinition:
 
 # ── kc_for_day ─────────────────────────────────────────────────────────────────
 
-class TestKcForDay:
 
+class TestKcForDay:
     # ── Initial stage (days 0-9) ──
 
     def test_initial_stage_day_0(self, simple_crop):
@@ -174,24 +193,24 @@ class TestKcForDay:
 
     def test_no_jump_at_ini_to_dev_boundary(self, simple_crop):
         kc_before = kc_for_day(simple_crop, 9)
-        kc_after  = kc_for_day(simple_crop, 10)
+        kc_after = kc_for_day(simple_crop, 10)
         assert abs(kc_after - kc_before) < 0.01
 
     def test_no_jump_at_dev_to_mid_boundary(self, simple_crop):
         kc_before = kc_for_day(simple_crop, 29)
-        kc_after  = kc_for_day(simple_crop, 30)
+        kc_after = kc_for_day(simple_crop, 30)
         assert abs(kc_after - kc_before) < 0.05
 
     def test_no_jump_at_mid_to_late_boundary(self, simple_crop):
         kc_before = kc_for_day(simple_crop, 59)
-        kc_after  = kc_for_day(simple_crop, 60)
+        kc_after = kc_for_day(simple_crop, 60)
         assert abs(kc_after - kc_before) < 0.01
 
 
 # ── load_crops / get_crop / available_crops ────────────────────────────────────
 
-class TestCropLoader:
 
+class TestCropLoader:
     def test_load_from_custom_path(self, crops_json):
         registry = load_crops(crops_json)
         assert "alpha" in registry
@@ -224,40 +243,40 @@ class TestCropLoader:
 
 # ── kc_for_zone ────────────────────────────────────────────────────────────────
 
-class TestKcForZone:
 
+class TestKcForZone:
     def test_single_crop_matches_kc_for_day(self):
         # Single crop in zone should equal kc_for_day directly
         planting = date(2024, 4, 1)
-        today    = date(2024, 7, 1)   # 91 days later — mid-season for tomato
-        tomato   = get_crop("tomato")
+        today = date(2024, 7, 1)  # 91 days later — mid-season for tomato
+        tomato = get_crop("tomato")
 
-        result_zone   = kc_for_zone(["tomato"], planting, today)
+        result_zone = kc_for_zone(["tomato"], planting, today)
         result_direct = kc_for_day(tomato, (today - planting).days)
         assert result_zone == pytest.approx(result_direct)
 
     def test_multi_crop_is_average(self):
         # Two crops: average of their individual Kc values on the same day
         planting = date(2024, 4, 1)
-        today    = date(2024, 7, 15)  # 105 days
+        today = date(2024, 7, 15)  # 105 days
         registry = load_crops()
 
-        kc_tomato  = kc_for_day(registry["tomato"],     (today - planting).days)
-        kc_pumpkin = kc_for_day(registry["pumpkin"],    (today - planting).days)
-        expected   = (kc_tomato + kc_pumpkin) / 2
+        kc_tomato = kc_for_day(registry["tomato"], (today - planting).days)
+        kc_pumpkin = kc_for_day(registry["pumpkin"], (today - planting).days)
+        expected = (kc_tomato + kc_pumpkin) / 2
 
         result = kc_for_zone(["tomato", "pumpkin"], planting, today)
         assert result == pytest.approx(expected)
 
     def test_three_crops_average(self):
         planting = date(2024, 4, 15)
-        today    = date(2024, 7, 4)   # 80 days
+        today = date(2024, 7, 4)  # 80 days
         registry = load_crops()
-        days     = (today - planting).days
+        days = (today - planting).days
 
         expected = (
-            kc_for_day(registry["tomato"],     days)
-            + kc_for_day(registry["pumpkin"],  days)
+            kc_for_day(registry["tomato"], days)
+            + kc_for_day(registry["pumpkin"], days)
             + kc_for_day(registry["bean_green"], days)
         ) / 3
 
@@ -272,8 +291,8 @@ class TestKcForZone:
     def test_unknown_crop_ids_ignored(self):
         # Unknown IDs are silently skipped; known ones still averaged
         planting = date(2024, 4, 1)
-        today    = date(2024, 7, 1)
-        result_clean   = kc_for_zone(["tomato"], planting, today)
+        today = date(2024, 7, 1)
+        result_clean = kc_for_zone(["tomato"], planting, today)
         result_with_junk = kc_for_zone(["tomato", "nonexistent_crop"], planting, today)
         assert result_clean == pytest.approx(result_with_junk)
 
@@ -288,5 +307,5 @@ class TestKcForZone:
         # Kc in July should be higher than Kc in April for the same planting
         planting = date(2024, 4, 1)
         kc_early = kc_for_zone(["tomato"], planting, date(2024, 5, 1))
-        kc_peak  = kc_for_zone(["tomato"], planting, date(2024, 7, 1))
+        kc_peak = kc_for_zone(["tomato"], planting, date(2024, 7, 1))
         assert kc_peak > kc_early

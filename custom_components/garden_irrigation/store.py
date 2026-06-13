@@ -51,6 +51,7 @@ class IrrigationStore:
     Parameters
     ----------
     hass : The HomeAssistant instance.
+
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -61,7 +62,7 @@ class IrrigationStore:
     async def async_load_bucket(
         self,
         entry_id: str,
-        config:   BucketConfig,
+        config: BucketConfig,
     ) -> WaterBucket:
         """
         Load the persisted bucket for a zone, or create a fresh one.
@@ -77,13 +78,15 @@ class IrrigationStore:
         Returns
         -------
         WaterBucket  — restored from disk, or a fresh bucket at 50 % capacity.
+
         """
         data = await self._load_all()
 
         if entry_id in data:
             _LOGGER.debug(
                 "Restoring bucket for entry %s: %s",
-                entry_id, data[entry_id],
+                entry_id,
+                data[entry_id],
             )
             return WaterBucket.from_dict(data[entry_id], config)
 
@@ -95,7 +98,7 @@ class IrrigationStore:
     async def async_save_bucket(
         self,
         entry_id: str,
-        bucket:   WaterBucket,
+        bucket: WaterBucket,
     ) -> None:
         """
         Persist the current bucket level for a zone.
@@ -108,6 +111,7 @@ class IrrigationStore:
         ----------
         entry_id : HA config entry ID for this zone.
         bucket   : The WaterBucket whose state should be saved.
+
         """
         data = await self._load_all()
         data[entry_id] = bucket.to_dict()
@@ -124,6 +128,7 @@ class IrrigationStore:
         Parameters
         ----------
         entry_id : HA config entry ID for the zone being removed.
+
         """
         data = await self._load_all()
 

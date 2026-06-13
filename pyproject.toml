@@ -1,0 +1,55 @@
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+log_cli      = true
+
+# asyncio_mode requires pytest-asyncio. Install it with:
+#   pip install pytest-asyncio
+# Inside the dev container it may already be present; if not, add it to
+# requirements_test.txt and run pip install -r requirements_test.txt.
+asyncio_mode = "auto"
+
+filterwarnings = [
+    # Turn most DeprecationWarnings into errors so we catch real issues
+    "error::DeprecationWarning",
+    # aiohttp raises this internally inside HA — not our code, can't fix it
+    "ignore::DeprecationWarning:aiohttp",
+    # HA itself raises some DeprecationWarnings on newer Python versions
+    "ignore::DeprecationWarning:homeassistant",
+]
+
+# ── Ruff ──────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+# Note: py314 in the blueprint's .ruff.toml is a typo — 3.14 is pre-release.
+# py312 matches HA's minimum supported version.
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes — undefined names, unused imports
+    "I",    # isort — import ordering
+    "UP",   # pyupgrade — modernise syntax
+    "B",    # flake8-bugbear — common bugs and design issues
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "C4",   # flake8-comprehensions
+    "RUF",  # ruff-specific rules
+]
+
+ignore = [
+    "D203",   # no-blank-line-before-class     (conflicts with D211)
+    "D212",   # multi-line-summary-first-line  (conflicts with D213)
+    "COM812", # missing-trailing-comma         (conflicts with formatter)
+    "ISC001", # implicit string concat         (conflicts with formatter)
+]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+
+[tool.ruff.lint.pyupgrade]
+keep-runtime-typing = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25

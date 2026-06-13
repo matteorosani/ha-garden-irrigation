@@ -18,15 +18,13 @@ The tests verify:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from garden_irrigation.bucket import BucketConfig, WaterBucket
 
 # HA stubs are injected by tests/conftest.py before this file is collected.
 from garden_irrigation.store import IrrigationStore
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -44,20 +42,20 @@ def _make_store(load_return: dict | None = None) -> tuple[IrrigationStore, Magic
     The mock_inner_store has async_load / async_save / async_remove as AsyncMocks.
     """
     mock_inner = MagicMock()
-    mock_inner.async_load   = AsyncMock(return_value=load_return)
-    mock_inner.async_save   = AsyncMock()
+    mock_inner.async_load = AsyncMock(return_value=load_return)
+    mock_inner.async_save = AsyncMock()
     mock_inner.async_remove = AsyncMock()
 
     hass = MagicMock()
     store = IrrigationStore(hass)
-    store._store = mock_inner   # replace the real Store with our mock
+    store._store = mock_inner  # replace the real Store with our mock
     return store, mock_inner
 
 
 # ── async_load_bucket ─────────────────────────────────────────────────────────
 
-class TestAsyncLoadBucket:
 
+class TestAsyncLoadBucket:
     @pytest.mark.asyncio
     async def test_fresh_bucket_when_no_file(self):
         store, _ = _make_store(load_return=None)
@@ -97,7 +95,7 @@ class TestAsyncLoadBucket:
     async def test_level_clamped_when_config_max_reduced(self):
         # Saved level was 40 mm, but user changed max_capacity to 25 mm
         store, _ = _make_store(load_return={ENTRY_A: {"level": 40.0}})
-        bucket = await store.async_load_bucket(ENTRY_A, CFG)   # max=25
+        bucket = await store.async_load_bucket(ENTRY_A, CFG)  # max=25
         assert bucket.level <= CFG.max_capacity
 
     @pytest.mark.asyncio
@@ -109,8 +107,8 @@ class TestAsyncLoadBucket:
 
 # ── async_save_bucket ─────────────────────────────────────────────────────────
 
-class TestAsyncSaveBucket:
 
+class TestAsyncSaveBucket:
     @pytest.mark.asyncio
     async def test_saves_bucket_level(self):
         store, mock_inner = _make_store(load_return={})
@@ -159,8 +157,8 @@ class TestAsyncSaveBucket:
 
 # ── async_remove_zone ─────────────────────────────────────────────────────────
 
-class TestAsyncRemoveZone:
 
+class TestAsyncRemoveZone:
     @pytest.mark.asyncio
     async def test_remove_deletes_only_target_zone(self):
         existing = {

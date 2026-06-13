@@ -16,11 +16,10 @@ Key invariants we enforce throughout:
 from __future__ import annotations
 
 import pytest
-
 from garden_irrigation.bucket import BucketConfig, DailyResult, WaterBucket
 
-
 # ── Fixtures ───────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def config() -> BucketConfig:
@@ -48,8 +47,8 @@ def half_bucket(config) -> WaterBucket:
 
 # ── BucketConfig validation ────────────────────────────────────────────────────
 
-class TestBucketConfig:
 
+class TestBucketConfig:
     def test_valid_config(self):
         cfg = BucketConfig(max_capacity=25.0, low_threshold=12.0)
         assert cfg.max_capacity == 25.0
@@ -84,8 +83,8 @@ class TestBucketConfig:
 
 # ── WaterBucket initialisation ─────────────────────────────────────────────────
 
-class TestWaterBucketInit:
 
+class TestWaterBucketInit:
     def test_explicit_initial_level(self, config):
         b = WaterBucket(config, initial_level=15.0)
         assert b.level == pytest.approx(15.0)
@@ -105,8 +104,8 @@ class TestWaterBucketInit:
 
 # ── Properties ─────────────────────────────────────────────────────────────────
 
-class TestWaterBucketProperties:
 
+class TestWaterBucketProperties:
     def test_percentage_full(self, full_bucket):
         assert full_bucket.percentage == pytest.approx(100.0)
 
@@ -144,8 +143,8 @@ class TestWaterBucketProperties:
 
 # ── update() ──────────────────────────────────────────────────────────────────
 
-class TestUpdate:
 
+class TestUpdate:
     def test_returns_daily_result(self, full_bucket):
         result = full_bucket.update(rain_mm=0.0, et0_mm=5.0, kc=1.0)
         assert isinstance(result, DailyResult)
@@ -154,9 +153,9 @@ class TestUpdate:
         # 5 mm ET₀, Kc=1.0, no rain → level drops by 5
         result = full_bucket.update(rain_mm=0.0, et0_mm=5.0, kc=1.0)
         assert result.level_after == pytest.approx(20.0)
-        assert result.et_crop_mm  == pytest.approx(5.0)
-        assert result.rain_mm     == pytest.approx(0.0)
-        assert result.net_change  == pytest.approx(-5.0)
+        assert result.et_crop_mm == pytest.approx(5.0)
+        assert result.rain_mm == pytest.approx(0.0)
+        assert result.net_change == pytest.approx(-5.0)
 
     def test_rain_refills_bucket(self, empty_bucket):
         # 10 mm rain, no ET₀ → level rises to 10
@@ -185,14 +184,14 @@ class TestUpdate:
         b = WaterBucket(config, initial_level=15.0)
         result = b.update(rain_mm=2.0, et0_mm=3.0, kc=1.0)
         # net = 2 - 3 = -1 → level = 14
-        assert result.level_after  == pytest.approx(14.0)
-        assert result.was_clamped  is False
+        assert result.level_after == pytest.approx(14.0)
+        assert result.was_clamped is False
 
     def test_level_before_and_after_tracked(self, config):
         b = WaterBucket(config, initial_level=20.0)
         result = b.update(rain_mm=0.0, et0_mm=4.0, kc=1.0)
         assert result.level_before == pytest.approx(20.0)
-        assert result.level_after  == pytest.approx(16.0)
+        assert result.level_after == pytest.approx(16.0)
 
     def test_negative_rain_treated_as_zero(self, full_bucket):
         # Bad data from weather provider: negative rain is ignored
@@ -212,8 +211,8 @@ class TestUpdate:
 
 # ── add_irrigation() ───────────────────────────────────────────────────────────
 
-class TestAddIrrigation:
 
+class TestAddIrrigation:
     def test_adds_water(self, empty_bucket):
         empty_bucket.add_irrigation(10.0)
         assert empty_bucket.level == pytest.approx(10.0)
@@ -235,8 +234,8 @@ class TestAddIrrigation:
 
 # ── reset() ───────────────────────────────────────────────────────────────────
 
-class TestReset:
 
+class TestReset:
     def test_reset_from_empty(self, empty_bucket, config):
         empty_bucket.reset()
         assert empty_bucket.level == pytest.approx(config.max_capacity)
@@ -253,8 +252,8 @@ class TestReset:
 
 # ── Serialisation ──────────────────────────────────────────────────────────────
 
-class TestSerialisation:
 
+class TestSerialisation:
     def test_to_dict_contains_level(self, config):
         b = WaterBucket(config, initial_level=17.5)
         d = b.to_dict()
@@ -274,15 +273,16 @@ class TestSerialisation:
         # User had max=50, saved level=40, then changed max to 25
         old_config = BucketConfig(max_capacity=50.0, low_threshold=20.0)
         old_bucket = WaterBucket(old_config, initial_level=40.0)
-        saved      = old_bucket.to_dict()
+        saved = old_bucket.to_dict()
 
         new_config = BucketConfig(max_capacity=25.0, low_threshold=12.0)
-        restored   = WaterBucket.from_dict(saved, new_config)
+        restored = WaterBucket.from_dict(saved, new_config)
         # Level must be clamped to new max
         assert restored.level <= new_config.max_capacity
 
 
 # ── Multi-day sequence (integration-style test) ────────────────────────────────
+
 
 class TestMultiDaySequence:
     """
@@ -295,7 +295,7 @@ class TestMultiDaySequence:
         # 7 days, hot (ET₀=6, Kc=1.0), no rain
         for _ in range(7):
             b.update(rain_mm=0.0, et0_mm=6.0, kc=1.0)
-        # 25 - 7×6 = 25-42 → clamped at 0
+        # 25 - 7 * 6 = 25-42 → clamped at 0
         assert b.level == pytest.approx(0.0)
         assert b.needs_water is True
 
@@ -323,10 +323,10 @@ class TestMultiDaySequence:
         """Invariant: level always in [0, max_capacity] regardless of input."""
         b = WaterBucket(config, initial_level=12.0)
         scenarios = [
-            (0.0, 10.0, 1.2),   # heavy consumption
-            (50.0, 0.0, 0.5),   # torrential rain
-            (0.0,  0.0, 1.0),   # nothing happens
-            (5.0,  6.0, 0.8),   # net negative but small
+            (0.0, 10.0, 1.2),  # heavy consumption
+            (50.0, 0.0, 0.5),  # torrential rain
+            (0.0, 0.0, 1.0),  # nothing happens
+            (5.0, 6.0, 0.8),  # net negative but small
         ]
         for rain, et0, kc in scenarios:
             b.update(rain_mm=rain, et0_mm=et0, kc=kc)

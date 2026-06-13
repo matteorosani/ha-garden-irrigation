@@ -28,8 +28,8 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from propcache import cached_property
 
@@ -46,18 +46,21 @@ async def async_setup_entry(
     """Create all sensor entities for this zone."""
     coordinator: ZoneCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_entities([
-        BucketLevelSensor(coordinator, entry),
-        BucketPercentageSensor(coordinator, entry),
-        Et0Sensor(coordinator, entry),
-        KcSensor(coordinator, entry),
-        WateringDurationSensor(coordinator, entry),
-        RainYesterdaySensor(coordinator, entry),
-        StatusSensor(coordinator, entry),
-    ])
+    async_add_entities(
+        [
+            BucketLevelSensor(coordinator, entry),
+            BucketPercentageSensor(coordinator, entry),
+            Et0Sensor(coordinator, entry),
+            KcSensor(coordinator, entry),
+            WateringDurationSensor(coordinator, entry),
+            RainYesterdaySensor(coordinator, entry),
+            StatusSensor(coordinator, entry),
+        ]
+    )
 
 
 # ── Base class ─────────────────────────────────────────────────────────────────
+
 
 class ZoneSensorBase(SensorEntity):
     """
@@ -68,12 +71,12 @@ class ZoneSensorBase(SensorEntity):
     ``native_value`` and optionally ``extra_state_attributes``.
     """
 
-    _attr_has_entity_name = True   # name is relative to the device
-    _attr_should_poll     = False  # coordinator pushes updates
+    _attr_has_entity_name = True  # name is relative to the device
+    _attr_should_poll = False  # coordinator pushes updates
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         self._coordinator = coordinator
-        self._entry       = entry
+        self._entry = entry
 
     # ── Device grouping ────────────────────────────────────────────────────────
 
@@ -81,11 +84,11 @@ class ZoneSensorBase(SensorEntity):
     def device_info(self) -> DeviceInfo:
         """All sensors for this zone appear under the same HA device."""
         return DeviceInfo(
-            identifiers = {(DOMAIN, self._entry.entry_id)},
-            name        = self._entry.title,
-            manufacturer= "Garden Irrigation",
-            model       = "Drip Irrigation Zone",
-            entry_type  = None,
+            identifiers={(DOMAIN, self._entry.entry_id)},
+            name=self._entry.title,
+            manufacturer="Garden Irrigation",
+            model="Drip Irrigation Zone",
+            entry_type=None,
         )
 
     # ── Dispatcher subscription ────────────────────────────────────────────────
@@ -108,17 +111,18 @@ class ZoneSensorBase(SensorEntity):
 
 # ── Concrete sensors ───────────────────────────────────────────────────────────
 
+
 class BucketLevelSensor(ZoneSensorBase):
     """Current soil water level in mm."""
 
-    _attr_icon                    = "mdi:pail"
+    _attr_icon = "mdi:pail"
     _attr_native_unit_of_measurement = "mm"
-    _attr_state_class             = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_bucket_level"
-        self._attr_name      = "Bucket level"
+        self._attr_name = "Bucket level"
 
     @cached_property
     def native_value(self) -> float | None:
@@ -128,24 +132,24 @@ class BucketLevelSensor(ZoneSensorBase):
     def extra_state_attributes(self) -> dict[str, Any]:
         bucket = self._coordinator.bucket
         return {
-            "max_capacity_mm":  bucket.config.max_capacity,
+            "max_capacity_mm": bucket.config.max_capacity,
             "low_threshold_mm": bucket.config.low_threshold,
-            "deficit_mm":       round(bucket.deficit_mm, 1),
-            "needs_water":      bucket.needs_water,
+            "deficit_mm": round(bucket.deficit_mm, 1),
+            "needs_water": bucket.needs_water,
         }
 
 
 class BucketPercentageSensor(ZoneSensorBase):
     """Bucket level as a percentage of maximum capacity. Useful for gauge cards."""
 
-    _attr_icon                    = "mdi:gauge"
+    _attr_icon = "mdi:gauge"
     _attr_native_unit_of_measurement = "%"
-    _attr_state_class             = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_bucket_percentage"
-        self._attr_name      = "Bucket percentage"
+        self._attr_name = "Bucket percentage"
 
     @cached_property
     def native_value(self) -> float | None:
@@ -155,14 +159,14 @@ class BucketPercentageSensor(ZoneSensorBase):
 class Et0Sensor(ZoneSensorBase):
     """Reference evapotranspiration ET₀ computed for today [mm/day]."""
 
-    _attr_icon                    = "mdi:weather-sunny"
+    _attr_icon = "mdi:weather-sunny"
     _attr_native_unit_of_measurement = "mm/day"
-    _attr_state_class             = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_et0"
-        self._attr_name      = "ET₀ today"
+        self._attr_name = "ET₀ today"
 
     @cached_property
     def native_value(self) -> float | None:
@@ -177,8 +181,8 @@ class Et0Sensor(ZoneSensorBase):
         if result is None:
             return {}
         return {
-            "kc":          result.kc,
-            "et_crop_mm":  result.et_crop_mm,
+            "kc": result.kc,
+            "et_crop_mm": result.et_crop_mm,
         }
 
 
@@ -190,13 +194,13 @@ class KcSensor(ZoneSensorBase):
     to the current growth stage based on the planting date.
     """
 
-    _attr_icon        = "mdi:leaf"
+    _attr_icon = "mdi:leaf"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_kc"
-        self._attr_name      = "Crop coefficient (Kc)"
+        self._attr_name = "Crop coefficient (Kc)"
 
     @cached_property
     def native_value(self) -> float | None:
@@ -214,14 +218,14 @@ class WateringDurationSensor(ZoneSensorBase):
     explains why, e.g. "bucket_sufficient" or "forecast_rain_sufficient".
     """
 
-    _attr_icon                    = "mdi:timer-outline"
+    _attr_icon = "mdi:timer-outline"
     _attr_native_unit_of_measurement = "min"
-    _attr_state_class             = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_watering_duration"
-        self._attr_name      = "Watering duration"
+        self._attr_name = "Watering duration"
 
     @cached_property
     def native_value(self) -> float | None:
@@ -236,9 +240,9 @@ class WateringDurationSensor(ZoneSensorBase):
         if result is None:
             return {}
         attrs: dict[str, Any] = {
-            "water_mm":      result.water_mm,
+            "water_mm": result.water_mm,
             "volume_liters": result.volume_liters,
-            "should_water":  result.should_water,
+            "should_water": result.should_water,
         }
         if result.skip_reason:
             attrs["skip_reason"] = _skip_reason_label(result.skip_reason)
@@ -248,15 +252,15 @@ class WateringDurationSensor(ZoneSensorBase):
 class RainYesterdaySensor(ZoneSensorBase):
     """Measured precipitation from yesterday [mm], used to update the bucket."""
 
-    _attr_icon                    = "mdi:weather-rainy"
-    _attr_device_class            = SensorDeviceClass.PRECIPITATION
+    _attr_icon = "mdi:weather-rainy"
+    _attr_device_class = SensorDeviceClass.PRECIPITATION
     _attr_native_unit_of_measurement = "mm"
-    _attr_state_class             = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_rain_yesterday"
-        self._attr_name      = "Rain yesterday"
+        self._attr_name = "Rain yesterday"
 
     @cached_property
     def native_value(self) -> float | None:
@@ -271,8 +275,8 @@ class RainYesterdaySensor(ZoneSensorBase):
         if result is None:
             return {}
         return {
-            "net_change_mm":  result.daily.net_change,
-            "was_clamped":    result.daily.was_clamped,
+            "net_change_mm": result.daily.net_change,
+            "was_clamped": result.daily.was_clamped,
         }
 
 
@@ -292,7 +296,7 @@ class StatusSensor(ZoneSensorBase):
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_status"
-        self._attr_name      = "Status"
+        self._attr_name = "Status"
 
     @cached_property
     def native_value(self) -> str:
@@ -309,19 +313,20 @@ class StatusSensor(ZoneSensorBase):
         if result is None:
             return {}
         return {
-            "bucket_level_mm":    result.bucket_level,
-            "bucket_percent":     result.bucket_percentage,
-            "et0_mm":             result.et0_mm,
-            "kc":                 result.kc,
-            "duration_minutes":   result.duration_minutes,
+            "bucket_level_mm": result.bucket_level,
+            "bucket_percent": result.bucket_percentage,
+            "et0_mm": result.et0_mm,
+            "kc": result.kc,
+            "duration_minutes": result.duration_minutes,
         }
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def _skip_reason_label(reason: str) -> str:
     """Convert internal skip reason constants to dashboard-friendly strings."""
     return {
-        SKIP_BUCKET_SUFFICIENT:        "Skipped: soil ok",
+        SKIP_BUCKET_SUFFICIENT: "Skipped: soil ok",
         SKIP_FORECAST_RAIN_SUFFICIENT: "Skipped: rain forecast",
     }.get(reason, "Skipped")

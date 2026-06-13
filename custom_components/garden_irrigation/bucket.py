@@ -28,8 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 # ── Config ─────────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class BucketConfig:
@@ -42,8 +42,10 @@ class BucketConfig:
                     Typical values: 20-40 mm for a 30 cm deep vegetable bed.
     low_threshold : Trigger irrigation when bucket drops below this [mm].
                     A common starting point is 50 % of max_capacity.
+
     """
-    max_capacity:  float
+
+    max_capacity: float
     low_threshold: float
 
     def __post_init__(self) -> None:
@@ -57,6 +59,7 @@ class BucketConfig:
 
 
 # ── Daily result ───────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class DailyResult:
@@ -76,16 +79,19 @@ class DailyResult:
                    (may differ from level_before + net_change due to clamping)
     was_clamped  : True if the level hit 0 or max_capacity during the update.
                    Useful for detecting prolonged drought or oversupply.
+
     """
-    et_crop_mm:   float
-    rain_mm:      float
-    net_change:   float
+
+    et_crop_mm: float
+    rain_mm: float
+    net_change: float
     level_before: float
-    level_after:  float
-    was_clamped:  bool
+    level_after: float
+    was_clamped: bool
 
 
 # ── Bucket ─────────────────────────────────────────────────────────────────────
+
 
 class WaterBucket:
     """
@@ -98,6 +104,7 @@ class WaterBucket:
                     Defaults to 50 % of max_capacity when not specified —
                     a safe mid-point that avoids triggering immediate watering
                     on first run while not assuming a fully saturated soil.
+
     """
 
     def __init__(
@@ -106,10 +113,8 @@ class WaterBucket:
         initial_level: float | None = None,
     ) -> None:
         self._config = config
-        self._level  = (
-            initial_level
-            if initial_level is not None
-            else config.max_capacity / 2.0
+        self._level = (
+            initial_level if initial_level is not None else config.max_capacity / 2.0
         )
         # Clamp initial value into valid range
         self._level = self._clamp(self._level)
@@ -166,25 +171,26 @@ class WaterBucket:
         Returns
         -------
         DailyResult  — breakdown of the update, used by sensor entities.
-        """
-        rain_mm   = max(0.0, rain_mm)
-        et0_mm    = max(0.0, et0_mm)
-        kc        = max(0.0, kc)
 
-        et_crop   = et0_mm * kc
-        net       = rain_mm - et_crop
-        before    = self._level
+        """
+        rain_mm = max(0.0, rain_mm)
+        et0_mm = max(0.0, et0_mm)
+        kc = max(0.0, kc)
+
+        et_crop = et0_mm * kc
+        net = rain_mm - et_crop
+        before = self._level
         raw_after = before + net
 
         self._level = self._clamp(raw_after)
 
         return DailyResult(
-            et_crop_mm   = round(et_crop, 3),
-            rain_mm      = round(rain_mm, 3),
-            net_change   = round(net, 3),
-            level_before = round(before, 3),
-            level_after  = round(self._level, 3),
-            was_clamped  = (raw_after != self._level),
+            et_crop_mm=round(et_crop, 3),
+            rain_mm=round(rain_mm, 3),
+            net_change=round(net, 3),
+            level_before=round(before, 3),
+            level_after=round(self._level, 3),
+            was_clamped=(raw_after != self._level),
         )
 
     def add_irrigation(self, water_mm: float) -> None:
@@ -198,6 +204,7 @@ class WaterBucket:
         ----------
         water_mm : Volume of water delivered, expressed as depth [mm].
                    Conversion: water_mm = volume_litres / zone_area_m²
+
         """
         self._level = self._clamp(self._level + max(0.0, water_mm))
 
@@ -226,7 +233,7 @@ class WaterBucket:
         cls,
         data: dict[str, Any],
         config: BucketConfig,
-    ) -> "WaterBucket":
+    ) -> WaterBucket:
         """
         Restore a WaterBucket from a previously serialised dict.
 
@@ -236,6 +243,7 @@ class WaterBucket:
         config : BucketConfig from the current config entry
                  (may differ from when the state was saved if the user
                  changed max_capacity — the clamp in __init__ handles this)
+
         """
         level = float(data.get("level", config.max_capacity / 2.0))
         return cls(config=config, initial_level=level)

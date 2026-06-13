@@ -22,16 +22,19 @@ We never hit the real Open-Meteo API in tests.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-import pytest
+from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
-
+import pytest
 from garden_irrigation.weather import WeatherData, WeatherProviderError
-from garden_irrigation.weather.open_meteo import OpenMeteoProvider, _optional_float, _require_float
-
+from garden_irrigation.weather.open_meteo import (
+    OpenMeteoProvider,
+    _optional_float,
+    _require_float,
+)
 
 # ── Sample API response ────────────────────────────────────────────────────────
+
 
 def _sample_response(
     tmax=(28.0, 32.0, 30.0),
@@ -47,21 +50,22 @@ def _sample_response(
     Default: yesterday had 5.2 mm rain; today hot (32/18); tomorrow 3 mm expected.
     """
     return {
-        "latitude":  45.47,
+        "latitude": 45.47,
         "longitude": 9.18,
-        "timezone":  "Europe/Rome",
+        "timezone": "Europe/Rome",
         "daily": {
-            "time":                       ["2024-06-30", "2024-07-01", "2024-07-02"],
-            "temperature_2m_max":         list(tmax),
-            "temperature_2m_min":         list(tmin),
-            "precipitation_sum":          list(precip),
-            "wind_speed_10m_max":         list(wind),
-            "relative_humidity_2m_mean":  list(humidity),
+            "time": ["2024-06-30", "2024-07-01", "2024-07-02"],
+            "temperature_2m_max": list(tmax),
+            "temperature_2m_min": list(tmin),
+            "precipitation_sum": list(precip),
+            "wind_speed_10m_max": list(wind),
+            "relative_humidity_2m_mean": list(humidity),
         },
     }
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def provider() -> OpenMeteoProvider:
@@ -75,8 +79,8 @@ def provider() -> OpenMeteoProvider:
 
 # ── _require_float / _optional_float ──────────────────────────────────────────
 
-class TestHelpers:
 
+class TestHelpers:
     def test_require_float_converts(self):
         assert _require_float(3, "x") == pytest.approx(3.0)
 
@@ -96,8 +100,8 @@ class TestHelpers:
 
 # ── _parse() ──────────────────────────────────────────────────────────────────
 
-class TestParse:
 
+class TestParse:
     def test_returns_weather_data(self, provider):
         result = provider._parse(_sample_response())
         assert isinstance(result, WeatherData)
@@ -132,8 +136,9 @@ class TestParse:
 
     def test_swaps_inverted_temperatures(self, provider):
         # API occasionally returns max < min — we correct it gracefully
-        result = provider._parse(_sample_response(tmax=(28.0, 18.0, 26.0),
-                                                   tmin=(15.0, 32.0, 14.0)))
+        result = provider._parse(
+            _sample_response(tmax=(28.0, 18.0, 26.0), tmin=(15.0, 32.0, 14.0))
+        )
         assert result.temp_max >= result.temp_min
 
     def test_optional_wind_present(self, provider):
@@ -176,8 +181,8 @@ class TestParse:
 
 # ── get_data() — async, uses mock session ─────────────────────────────────────
 
-class TestGetData:
 
+class TestGetData:
     def _make_mock_session(self, json_data: dict) -> MagicMock:
         """Build a mock aiohttp session that returns json_data on GET."""
         mock_resp = AsyncMock()
@@ -223,7 +228,7 @@ class TestGetData:
         provider = OpenMeteoProvider(45.47, 9.18, session)
         await provider.get_data()
         params = session.get.call_args[1]["params"]
-        assert params["latitude"]  == 45.47
+        assert params["latitude"] == 45.47
         assert params["longitude"] == 9.18
 
     @pytest.mark.asyncio
@@ -238,9 +243,11 @@ class TestGetData:
 
     @pytest.mark.asyncio
     async def test_network_error_raises_provider_error(self):
-        session = self._make_error_session(aiohttp.ClientConnectorError(
-            connection_key=MagicMock(), os_error=OSError("refused")
-        ))
+        session = self._make_error_session(
+            aiohttp.ClientConnectorError(
+                connection_key=MagicMock(), os_error=OSError("refused")
+            )
+        )
         provider = OpenMeteoProvider(45.47, 9.18, session)
         with pytest.raises(WeatherProviderError):
             await provider.get_data()

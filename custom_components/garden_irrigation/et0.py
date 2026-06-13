@@ -20,6 +20,7 @@ Hargreaves, G.H. & Samani, Z.A. (1985). Reference crop evapotranspiration
 Allen, R.G. et al. (1998). Crop evapotranspiration — Guidelines for computing
     crop water requirements. FAO Irrigation and Drainage Paper 56. FAO, Rome.
     Equations 21-27 (Ra), Section 3.2.1 (Hargreaves).
+
 """
 
 from __future__ import annotations
@@ -28,11 +29,12 @@ import math
 from datetime import date
 
 # ── Physical constants ─────────────────────────────────────────────────────────
-_GSC           = 0.0820  # Solar constant  [MJ/m^2/min)]
-_LATENT_HEAT   = 2.45    # Latent heat of vaporisation of water  [MJ/kg]
+_GSC = 0.0820  # Solar constant  [MJ/m^2/min)]
+_LATENT_HEAT = 2.45  # Latent heat of vaporisation of water  [MJ/kg]
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
+
 
 def _extraterrestrial_radiation(day_of_year: int, latitude_rad: float) -> float:
     """
@@ -50,8 +52,9 @@ def _extraterrestrial_radiation(day_of_year: int, latitude_rad: float) -> float:
     Returns
     -------
     Ra in MJ/m^2/day  (always >= 0)
+
     """
-    # Inverse relative distance Earth–Sun  (FAO-56 eq. 23)
+    # Inverse relative distance Earth-Sun  (FAO-56 eq. 23)
     # Accounts for the elliptical orbit: Earth is ~3 % closer in January.
     dr = 1.0 + 0.033 * math.cos(2.0 * math.pi / 365.0 * day_of_year)
 
@@ -65,7 +68,7 @@ def _extraterrestrial_radiation(day_of_year: int, latitude_rad: float) -> float:
     # extreme latitudes where the Sun never rises/sets.
     arg = -math.tan(latitude_rad) * math.tan(decl)
     arg = max(-1.0, min(1.0, arg))
-    ws  = math.acos(arg)
+    ws = math.acos(arg)
 
     # Ra  (FAO-56 eq. 21)
     ra = (
@@ -81,6 +84,7 @@ def _extraterrestrial_radiation(day_of_year: int, latitude_rad: float) -> float:
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
+
 
 def et0_hargreaves(
     t_min: float,
@@ -102,6 +106,7 @@ def et0_hargreaves(
     -------
     ET₀ in mm/day (always >= 0).
     Returns 0.0 if Tmax <= Tmin (invalid range — can't take sqrt of non-positive).
+
     """
     if t_max <= t_min:
         return 0.0
@@ -138,10 +143,11 @@ def et0_for_date(
     Returns
     -------
     ET₀ in mm/day (always >= 0)
+
     """
     return et0_hargreaves(
-        t_min        = t_min,
-        t_max        = t_max,
-        day_of_year  = day.timetuple().tm_yday,
-        latitude_rad = math.radians(latitude_deg),
+        t_min=t_min,
+        t_max=t_max,
+        day_of_year=day.timetuple().tm_yday,
+        latitude_rad=math.radians(latitude_deg),
     )

@@ -32,12 +32,12 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Sequence
-
 
 # ── Data model ─────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class CropDefinition:
@@ -56,14 +56,15 @@ class CropDefinition:
     l_mid   : length of mid-season stage in days
     l_late  : length of late-season stage in days
     """
-    id:     str
-    name:   str
+
+    id: str
+    name: str
     kc_ini: float
     kc_mid: float
     kc_end: float
-    l_ini:  int
-    l_dev:  int
-    l_mid:  int
+    l_ini: int
+    l_dev: int
+    l_mid: int
     l_late: int
 
     @property
@@ -76,44 +77,79 @@ class CropDefinition:
 
 _CROPS_FILE = os.path.join(os.path.dirname(__file__), "crops.json")
 _crop_registry: dict[str, CropDefinition] | None = None
+_user_crops_file: str | None = None
+
+
+def set_user_crops_file(path: str | None) -> None:
+    """
+    Register the path to the user's custom crops file.
+
+    Called once from async_setup_entry after HA's config directory is known.
+    Pass None to disable user crops. Invalidates the cache so the next
+    load_crops() call re-reads both files.
+    """
+    global _user_crops_file, _crop_registry
+    _user_crops_file = path
+    _crop_registry = None
+
+
+def _parse_crops_file(path: str) -> dict[str, CropDefinition]:
+    """Read one crops JSON file and return a registry dict."""
+    with open(path, encoding="utf-8") as fh:
+        raw = json.load(fh)
+    registry: dict[str, CropDefinition] = {}
+    for entry in raw["crops"]:
+        crop = CropDefinition(
+            id=entry["id"],
+            name=entry["name"],
+            kc_ini=float(entry["kc_ini"]),
+            kc_mid=float(entry["kc_mid"]),
+            kc_end=float(entry["kc_end"]),
+            l_ini=int(entry["l_ini"]),
+            l_dev=int(entry["l_dev"]),
+            l_mid=int(entry["l_mid"]),
+            l_late=int(entry["l_late"]),
+        )
+        registry[crop.id] = crop
+    return registry
 
 
 def load_crops(path: str = _CROPS_FILE) -> dict[str, CropDefinition]:
     """
-    Parse crops.json and return a dict keyed by crop ID.
+    Load the crop registry, merging bundled and user-defined crops.
 
-    The result is cached after the first call so the file is only read once
-    per interpreter session (important in a long-running HA process).
+    Load order (later entries win on duplicate IDs):
+      1. Bundled crops.json shipped with the integration.
+      2. User file registered via set_user_crops_file() — lives in the HA
+         config directory so it survives integration updates.
+
+    A user crop with the same id as a bundled crop overrides it, which lets
+    you calibrate Kc or stage durations to your local conditions.
 
     Parameters
     ----------
-    path : path to crops.json — override mainly useful in tests.
+    path : override the bundled file — used in tests only.
     """
     global _crop_registry
     if _crop_registry is not None and path == _CROPS_FILE:
         return _crop_registry
 
-    with open(path, encoding="utf-8") as fh:
-        raw = json.load(fh)
+    registry = _parse_crops_file(path)
 
-    registry: dict[str, CropDefinition] = {}
-    for entry in raw["crops"]:
-        crop = CropDefinition(
-            id     = entry["id"],
-            name   = entry["name"],
-            kc_ini = float(entry["kc_ini"]),
-            kc_mid = float(entry["kc_mid"]),
-            kc_end = float(entry["kc_end"]),
-            l_ini  = int(entry["l_ini"]),
-            l_dev  = int(entry["l_dev"]),
-            l_mid  = int(entry["l_mid"]),
-            l_late = int(entry["l_late"]),
-        )
-        registry[crop.id] = crop
+    if path == _CROPS_FILE and _user_crops_file and os.path.exists(_user_crops_file):
+        try:
+            registry.update(_parse_crops_file(_user_crops_file))
+        except (json.JSONDecodeError, KeyError, ValueError) as err:
+            import logging
+
+            logging.getLogger(__name__).error(
+                "garden_irrigation: failed to load user crops from %s - %s",
+                _user_crops_file,
+                err,
+            )
 
     if path == _CROPS_FILE:
         _crop_registry = registry
-
     return registry
 
 
@@ -132,6 +168,7 @@ def available_crops() -> list[CropDefinition]:
 
 
 # ── Kc interpolation ───────────────────────────────────────────────────────────
+
 
 def kc_for_day(crop: CropDefinition, days_since_planting: int) -> float:
     """
@@ -157,10 +194,10 @@ def kc_for_day(crop: CropDefinition, days_since_planting: int) -> float:
     d = max(0, days_since_planting)
 
     # Cumulative stage boundary days
-    end_ini  = crop.l_ini
-    end_dev  = end_ini + crop.l_dev
-    end_mid  = end_dev + crop.l_mid
-    end_late = end_mid + crop.l_late   # == crop.total_days
+    end_ini = crop.l_ini
+    end_dev = end_ini + crop.l_dev
+    end_mid = end_dev + crop.l_mid
+    end_late = end_mid + crop.l_late  # == crop.total_days
 
     if d < end_ini:
         # Initial stage — flat
@@ -215,11 +252,7 @@ def kc_for_zone(
     days = (today - planting_date).days
     registry = load_crops()
 
-    kc_values = [
-        kc_for_day(registry[cid], days)
-        for cid in crop_ids
-        if cid in registry
-    ]
+    kc_values = [kc_for_day(registry[cid], days) for cid in crop_ids if cid in registry]
 
     if not kc_values:
         return 1.0
@@ -228,6 +261,7 @@ def kc_for_zone(
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
+
 
 def _lerp(a: float, b: float, t: float) -> float:
     """Linear interpolation: returns a + t*(b-a), t clamped to [0, 1]."""

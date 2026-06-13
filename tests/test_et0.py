@@ -21,8 +21,8 @@ from datetime import date
 
 from garden_irrigation.et0 import (
     _extraterrestrial_radiation,
-    et0_hargreaves,
     et0_for_date,
+    et0_hargreaves,
 )
 
 # Milan, Italy — the reference location used throughout these tests
@@ -31,6 +31,7 @@ MILAN_LAT_RAD = math.radians(MILAN_LAT_DEG)
 
 
 # ── Ra tests ───────────────────────────────────────────────────────────────────
+
 
 class TestExtraterrestrialRadiation:
     """
@@ -42,20 +43,20 @@ class TestExtraterrestrialRadiation:
 
     def test_summer_solstice_milan(self):
         # FAO-56 Table 2: Ra at 48°N in June ≈ 41 MJ/m²/day.
-        # For 45.47°N on day 172 (June 21) we expect ~40–44 MJ/m²/day.
+        # For 45.47°N on day 172 (June 21) we expect ~40 - 44 MJ/m²/day.
         ra = _extraterrestrial_radiation(172, MILAN_LAT_RAD)
         assert 38.0 < ra < 44.0, f"Ra summer solstice: {ra:.2f}"
 
     def test_winter_solstice_milan(self):
         # FAO-56 Table 2: Ra at 48°N in December ≈ 7 MJ/m²/day.
-        # For 45.47°N on day 355 (Dec 21) we expect 8–12 MJ/m²/day.
+        # For 45.47°N on day 355 (Dec 21) we expect 8 - 12 MJ/m²/day.
         ra = _extraterrestrial_radiation(355, MILAN_LAT_RAD)
         assert 7.0 < ra < 13.0, f"Ra winter solstice: {ra:.2f}"
 
     def test_summer_greater_than_winter(self):
         ra_summer = _extraterrestrial_radiation(172, MILAN_LAT_RAD)
         ra_winter = _extraterrestrial_radiation(355, MILAN_LAT_RAD)
-        # At 45°N the ratio is roughly 4–5×
+        # At 45°N the ratio is roughly 4 - 5 *
         assert ra_summer > ra_winter * 2.5
 
     def test_equator_high_and_stable(self):
@@ -86,6 +87,7 @@ class TestExtraterrestrialRadiation:
 
 # ── ET₀ tests ──────────────────────────────────────────────────────────────────
 
+
 class TestEt0Hargreaves:
     """
     We check absolute ranges (from climatological knowledge of the Po Valley)
@@ -94,7 +96,7 @@ class TestEt0Hargreaves:
 
     def test_hot_summer_day_milan(self):
         # Typical July day: Tmax 32°C, Tmin 18°C, day 182 (July 1)
-        # Expected ET₀: 5–8 mm/day for northern Italy summer
+        # Expected ET₀: 5 - 8 mm/day for northern Italy summer
         result = et0_hargreaves(18.0, 32.0, 182, MILAN_LAT_RAD)
         assert 5.0 < result < 8.0, f"Summer ET₀: {result:.2f}"
 
@@ -116,7 +118,7 @@ class TestEt0Hargreaves:
     def test_wider_temp_range_increases_et0(self):
         # Same mean temp, wider daily range → more ET₀
         narrow = et0_hargreaves(23.0, 27.0, 182, MILAN_LAT_RAD)  # range 4°C
-        wide   = et0_hargreaves(18.0, 32.0, 182, MILAN_LAT_RAD)  # range 14°C
+        wide = et0_hargreaves(18.0, 32.0, 182, MILAN_LAT_RAD)  # range 14°C
         assert wide > narrow
 
     def test_equal_temps_returns_zero(self):
@@ -139,14 +141,15 @@ class TestEt0Hargreaves:
 
 # ── Convenience wrapper tests ──────────────────────────────────────────────────
 
-class TestEt0ForDate:
 
+class TestEt0ForDate:
     def test_matches_core_function(self):
         # et0_for_date must produce the identical result as et0_hargreaves
-        d      = date(2024, 7, 1)
+        d = date(2024, 7, 1)
         via_wrapper = et0_for_date(18.0, 32.0, d, MILAN_LAT_DEG)
-        via_core    = et0_hargreaves(
-            18.0, 32.0,
+        via_core = et0_hargreaves(
+            18.0,
+            32.0,
             d.timetuple().tm_yday,
             math.radians(MILAN_LAT_DEG),
         )
@@ -160,5 +163,5 @@ class TestEt0ForDate:
     def test_southern_hemisphere(self):
         # Sydney, Australia (33.9°S) — June is winter there; ET₀ should be low
         result_june = et0_for_date(10.0, 18.0, date(2024, 6, 21), -33.87)
-        result_dec  = et0_for_date(22.0, 35.0, date(2024, 12, 21), -33.87)
+        result_dec = et0_for_date(22.0, 35.0, date(2024, 12, 21), -33.87)
         assert result_dec > result_june, "Southern hemisphere: Dec > Jun"

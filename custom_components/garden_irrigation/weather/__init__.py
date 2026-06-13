@@ -42,13 +42,15 @@ class WeatherData:
     wind_speed_ms      : Mean wind speed  [m/s]  — optional, reserved for
                          future Penman-Monteith upgrade.
     humidity_pct       : Relative humidity  [%]  — optional, same.
+
     """
-    temp_min:           float
-    temp_max:           float
-    precipitation_mm:   float
+
+    temp_min: float
+    temp_max: float
+    precipitation_mm: float
     forecast_precip_mm: float
-    wind_speed_ms:      float | None = field(default=None)
-    humidity_pct:       float | None = field(default=None)
+    wind_speed_ms: float | None = field(default=None)
+    humidity_pct: float | None = field(default=None)
 
 
 @runtime_checkable
