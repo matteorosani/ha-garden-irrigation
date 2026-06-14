@@ -5,41 +5,39 @@
         "title": "Zone Setup",
         "description": "Configure a new irrigation zone. Each zone maps to one valve and one set of crops.",
         "data": {
-          "zone_name":     "Zone name",
-          "valve_entity":  "Valve switch entity",
-          "watering_time": "Daily watering time"
+          "zone_name": "Zone name",
+          "calculation_time": "Daily calculation time"
         },
         "data_description": {
-          "zone_name":     "A descriptive name, e.g. \"Vegetable Bed\" or \"Tomatoes East\".",
-          "valve_entity":  "The switch entity that controls this zone's water valve.",
-          "watering_time": "Time of day to run the daily calculation and open the valve if needed."
+          "zone_name": "A descriptive name, e.g. \"Vegetable Bed\" or \"Tomatoes East\".",
+          "calculation_time": "Time of day to run the daily calculation."
         }
       },
       "zone_params": {
         "title": "Crops & System",
         "description": "Describe what is growing in this zone and the physical characteristics of your drip system.",
         "data": {
-          "crops":          "Crops in this zone",
-          "planting_date":  "Planting date",
-          "zone_area":      "Zone area (m²)",
-          "flow_rate":      "Drip system flow rate (L/min)",
-          "max_bucket":     "Maximum soil water capacity (mm)",
-          "low_threshold":  "Watering trigger threshold (mm)"
+          "crops": "Crops in this zone",
+          "planting_date": "Planting date",
+          "zone_area": "Zone area (m²)",
+          "flow_rate": "Drip system flow rate (L/min)",
+          "max_bucket": "Maximum soil water capacity (mm)",
+          "low_threshold": "Watering trigger threshold (mm)"
         },
         "data_description": {
-          "crops":         "Select all crops currently growing. Kc is averaged across them.",
+          "crops": "Select all crops currently growing. Kc is averaged across them.",
           "planting_date": "Date the crops were planted or transplanted. Used to determine growth stage.",
-          "zone_area":     "Total area covered by this zone's drip emitters.",
-          "flow_rate":     "Total water output of all emitters in this zone combined.",
-          "max_bucket":    "Maximum water the soil can hold (field capacity). Typical: 20–40 mm for a 30 cm vegetable bed.",
+          "zone_area": "Total area covered by this zone's drip emitters.",
+          "flow_rate": "Total water output of all emitters in this zone combined.",
+          "max_bucket": "Maximum water the soil can hold (field capacity). Typical: 20–40 mm for a 30 cm vegetable bed.",
           "low_threshold": "Open the valve when soil water drops below this level. Typical: 50% of max capacity."
         }
       }
     },
     "error": {
       "threshold_above_max": "Watering threshold must be less than the maximum soil capacity.",
-      "no_crops_selected":   "Select at least one crop.",
-      "invalid_date":        "Planting date is not valid."
+      "no_crops_selected": "Select at least one crop.",
+      "invalid_date": "Planting date is not valid."
     },
     "abort": {
       "already_configured": "This zone is already configured."
@@ -50,27 +48,26 @@
       "user": {
         "title": "Zone Setup",
         "data": {
-          "zone_name":     "Zone name",
-          "valve_entity":  "Valve switch entity",
-          "watering_time": "Daily watering time"
+          "zone_name": "Zone name",
+          "calculation_time": "Daily calculation time"
         }
       },
       "zone_params": {
         "title": "Crops & System",
         "data": {
-          "crops":         "Crops in this zone",
+          "crops": "Crops in this zone",
           "planting_date": "Planting date",
-          "zone_area":     "Zone area (m²)",
-          "flow_rate":     "Drip system flow rate (L/min)",
-          "max_bucket":    "Maximum soil water capacity (mm)",
+          "zone_area": "Zone area (m²)",
+          "flow_rate": "Drip system flow rate (L/min)",
+          "max_bucket": "Maximum soil water capacity (mm)",
           "low_threshold": "Watering trigger threshold (mm)"
         }
       }
     },
     "error": {
       "threshold_above_max": "Watering threshold must be less than the maximum soil capacity.",
-      "no_crops_selected":   "Select at least one crop.",
-      "invalid_date":        "Planting date is not valid."
+      "no_crops_selected": "Select at least one crop.",
+      "invalid_date": "Planting date is not valid."
     }
   }
 }

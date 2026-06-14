@@ -13,12 +13,12 @@ CONF_ZONE_AREA = "zone_area"  # m²
 CONF_FLOW_RATE = "flow_rate"  # L/min
 CONF_MAX_BUCKET = "max_bucket"  # mm — max soil water storage
 CONF_LOW_THRESHOLD = "low_threshold"  # mm — water when bucket drops below this
-CONF_WATERING_TIME = "watering_time"  # "HH:MM" string
+CONF_CALCULATION_TIME = "calculation_time"  # "HH:MM" string
 
 # ── Defaults ───────────────────────────────────────────────────────────────────
 DEFAULT_MAX_BUCKET = 25.0  # mm  — reasonable for 30 cm deep vegetable bed
 DEFAULT_LOW_THRESHOLD = 12.0  # mm  — 50 % of default max
-DEFAULT_WATERING_TIME = "07:00"
+DEFAULT_CALCULATION_TIME = "23:00"
 
 # ── Units (used in sensor entity definitions) ──────────────────────────────────
 UNIT_MM = "mm"

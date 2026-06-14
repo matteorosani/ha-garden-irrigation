@@ -71,14 +71,14 @@ views:
         title: Today's Calculation
         show_header_toggle: false
         entities:
-          - entity: sensor.vegetable_bed_et_today
+          - entity: sensor.vegetable_bed_et0_today
             name: Reference ET₀
           - entity: sensor.vegetable_bed_crop_coefficient_kc
             name: Crop coefficient (Kc)
           - type: attribute
-            entity: sensor.vegetable_bed_et_today
+            entity: sensor.vegetable_bed_et0_today
             attribute: et_crop_mm
-            name: Crop consumption (ET₀ × Kc)
+            name: Crop consumption (ET₀ * Kc)
             icon: mdi:water-minus-outline
           - type: divider
           - entity: sensor.vegetable_bed_watering_duration
@@ -108,7 +108,7 @@ views:
         title: ET₀ & Crop Coefficient — 7 days
         hours_to_show: 168
         entities:
-          - entity: sensor.vegetable_bed_et_today
+          - entity: sensor.vegetable_bed_et0_today
             name: ET₀ (mm/day)
           - entity: sensor.vegetable_bed_crop_coefficient_kc
             name: Kc

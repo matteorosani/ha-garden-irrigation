@@ -32,12 +32,12 @@ from typing import TYPE_CHECKING
 # ── Our own pure-Python modules (no HA dependency) ────────────────────────────
 from .bucket import BucketConfig, WaterBucket
 from .const import (
+    CONF_CALCULATION_TIME,
     CONF_CROPS,
     CONF_FLOW_RATE,
     CONF_LOW_THRESHOLD,
     CONF_MAX_BUCKET,
     CONF_PLANTING_DATE,
-    CONF_WATERING_TIME,
     CONF_ZONE_AREA,
     DOMAIN,
 )
@@ -165,8 +165,8 @@ class ZoneCoordinator:
         """Register the daily time trigger."""
         from homeassistant.helpers.event import async_track_time_change
 
-        watering_time = self.entry.data[CONF_WATERING_TIME]
-        hour, minute = (int(x) for x in watering_time.split(":"))
+        calculation_time = self.entry.data[CONF_CALCULATION_TIME]
+        hour, minute = (int(x) for x in calculation_time.split(":"))
 
         self._unsub = async_track_time_change(
             self.hass,
