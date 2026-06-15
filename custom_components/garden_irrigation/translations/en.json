@@ -3,22 +3,27 @@
     "step": {
       "user": {
         "title": "Zone Setup",
-        "description": "Configure a new irrigation zone. Each zone maps to one valve and one set of crops.",
+        "description": "Configure a new irrigation zone.",
         "data": {
           "zone_name": "Zone name",
-          "calculation_time": "Daily calculation time"
+          "calculation_time": "Daily calculation time",
+          "notify_enabled": "Send notification after calculation",
+          "notify_target": "Notification service"
         },
         "data_description": {
-          "zone_name": "A descriptive name, e.g. \"Vegetable Bed\" or \"Tomatoes East\".",
-          "calculation_time": "Time of day to run the daily calculation."
+          "zone_name": "A descriptive name, e.g. \"Vegetable Field\".",
+          "calculation_time": "When to run the daily ET₀ calculation and update sensors. Evening (23:00) is recommended — temperatures are fully known, rain data is settled, and the result is ready for your morning watering automation.",
+          "notify_enabled": "If enabled, a push notification is sent after each daily calculation summarising whether watering is needed.",
+          "notify_target": "The notify service to use, e.g. notify.mobile_app_myphone. Leave blank to disable notifications even if the toggle is on."
         }
       },
       "zone_params": {
-        "title": "Crops & System",
-        "description": "Describe what is growing in this zone and the physical characteristics of your drip system.",
+        "title": "Crops & Growth Stage",
+        "description": "Select what is growing and where you are in the season.",
         "data": {
           "crops": "Crops in this zone",
-          "planting_date": "Planting date",
+          "growth_stage": "Current growth stage",
+          "stage_progress": "Progress through this stage",
           "zone_area": "Zone area (m²)",
           "flow_rate": "Drip system flow rate (L/min)",
           "max_bucket": "Maximum soil water capacity (mm)",
@@ -26,18 +31,18 @@
         },
         "data_description": {
           "crops": "Select all crops currently growing. Kc is averaged across them.",
-          "planting_date": "Date the crops were planted or transplanted. Used to determine growth stage.",
-          "zone_area": "Total area covered by this zone's drip emitters.",
-          "flow_rate": "Total water output of all emitters in this zone combined.",
-          "max_bucket": "Maximum water the soil can hold (field capacity). Typical: 20–40 mm for a 30 cm vegetable bed.",
-          "low_threshold": "Open the valve when soil water drops below this level. Typical: 50% of max capacity."
+          "growth_stage": "Look at your plants and pick the stage that best describes them now.",
+          "stage_progress": "0% = just entered this stage. 100% = about to move to the next.",
+          "zone_area": "Total area of the planted field (length × width).",
+          "flow_rate": "Run the valve into a bucket for 1 minute and measure the volume — that number is your L/min.",
+          "max_bucket": "Sandy soil: 15–25 mm. Loam: 40–55 mm. Clay: 55–70 mm.",
+          "low_threshold": "Trigger watering when moisture drops below this. Typical: 50% of maximum."
         }
       }
     },
     "error": {
       "threshold_above_max": "Watering threshold must be less than the maximum soil capacity.",
-      "no_crops_selected": "Select at least one crop.",
-      "invalid_date": "Planting date is not valid."
+      "no_crops_selected": "Select at least one crop."
     },
     "abort": {
       "already_configured": "This zone is already configured."
@@ -49,14 +54,18 @@
         "title": "Zone Setup",
         "data": {
           "zone_name": "Zone name",
-          "calculation_time": "Daily calculation time"
+          "calculation_time": "Daily calculation time",
+          "notify_enabled": "Send notification after calculation",
+          "notify_target": "Notification service"
         }
       },
       "zone_params": {
-        "title": "Crops & System",
+        "title": "Crops & Growth Stage",
+        "description": "The stage below reflects the current state based on your original planting date. Adjust if needed.",
         "data": {
           "crops": "Crops in this zone",
-          "planting_date": "Planting date",
+          "growth_stage": "Current growth stage",
+          "stage_progress": "Progress through this stage",
           "zone_area": "Zone area (m²)",
           "flow_rate": "Drip system flow rate (L/min)",
           "max_bucket": "Maximum soil water capacity (mm)",
@@ -66,8 +75,7 @@
     },
     "error": {
       "threshold_above_max": "Watering threshold must be less than the maximum soil capacity.",
-      "no_crops_selected": "Select at least one crop.",
-      "invalid_date": "Planting date is not valid."
+      "no_crops_selected": "Select at least one crop."
     }
   }
 }

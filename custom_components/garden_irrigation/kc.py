@@ -31,10 +31,13 @@ Table 11 — Crop coefficients and growth stage durations.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+
+_LOGGER = logging.getLogger(__name__)
 
 # ── Data model ─────────────────────────────────────────────────────────────────
 
@@ -140,9 +143,7 @@ def load_crops(path: str = _CROPS_FILE) -> dict[str, CropDefinition]:
         try:
             registry.update(_parse_crops_file(_user_crops_file))
         except (json.JSONDecodeError, KeyError, ValueError) as err:
-            import logging
-
-            logging.getLogger(__name__).error(
+            _LOGGER.error(
                 "garden_irrigation: failed to load user crops from %s - %s",
                 _user_crops_file,
                 err,

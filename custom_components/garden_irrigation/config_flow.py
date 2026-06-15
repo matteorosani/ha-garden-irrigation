@@ -45,6 +45,8 @@ from .const import (
     CONF_FLOW_RATE,
     CONF_LOW_THRESHOLD,
     CONF_MAX_BUCKET,
+    CONF_NOTIFY_ENABLED,
+    CONF_NOTIFY_TARGET,
     CONF_PLANTING_DATE,
     CONF_ZONE_AREA,
     CONF_ZONE_NAME,
@@ -195,13 +197,30 @@ def _step1_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_CALCULATION_TIME,
                 default=d.get(CONF_CALCULATION_TIME, DEFAULT_CALCULATION_TIME),
             ): selector.TimeSelector(),
+            vol.Optional(
+                CONF_NOTIFY_ENABLED,
+                default=d.get(CONF_NOTIFY_ENABLED, False),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                CONF_NOTIFY_TARGET,
+                default=d.get(CONF_NOTIFY_TARGET, ""),
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
         }
     )
 
 
-def _step2_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
+def _step2_schema(
+    crops_list: list | None = None,
+    defaults: dict[str, Any] | None = None,
+) -> vol.Schema:
     """
     Schema for step 2: crops, growth stage, system parameters.
+
+    ``crops_list`` must be a pre-loaded list from ``available_crops()``.
+    Loading is done by the caller (an async step) via an executor job so
+    that the blocking file I/O never happens on the event loop thread.
 
     ``defaults`` may contain either:
     - CONF_PLANTING_DATE + CONF_CROPS  (options flow: reverse-computed from stored date)
@@ -403,6 +422,8 @@ class GardenIrrigationConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+        # Load crops in executor — file I/O must not block the event loop
+        crops_list = await self.hass.async_add_executor_job(available_crops)
 
         if user_input is not None:
             processed, errors = _process_step2(user_input)
@@ -415,7 +436,7 @@ class GardenIrrigationConfigFlow(ConfigFlow, domain=DOMAIN):
             # Re-show form with user's raw input as defaults so nothing is lost
             return self.async_show_form(
                 step_id="zone_params",
-                data_schema=_step2_schema(user_input),
+                data_schema=_step2_schema(crops_list, user_input),
                 errors=errors,
             )
 
@@ -478,6 +499,8 @@ class GardenIrrigationOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+        # Load crops in executor — file I/O must not block the event loop
+        crops_list = await self.hass.async_add_executor_job(available_crops)
 
         if user_input is not None:
             processed, errors = _process_step2(user_input)
@@ -486,13 +509,15 @@ class GardenIrrigationOptionsFlow(OptionsFlow):
                 return self.async_create_entry(title="", data=self._data)
             return self.async_show_form(
                 step_id="zone_params",
-                data_schema=_step2_schema(user_input),
+                data_schema=_step2_schema(crops_list, user_input),
                 errors=errors,
             )
 
         # Pre-fill: reverse-compute current stage + progress from stored planting_date
         return self.async_show_form(
             step_id="zone_params",
-            data_schema=_step2_schema(_step2_defaults_from_current(self._current())),
+            data_schema=_step2_schema(
+                crops_list, _step2_defaults_from_current(self._current())
+            ),
             errors=errors,
         )
