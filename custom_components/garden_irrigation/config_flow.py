@@ -182,33 +182,84 @@ def _pct(part: int, total: int) -> int:
 # ── Schema builders ────────────────────────────────────────────────────────────
 
 
-def _step1_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
-    """Schema for step 1: zone identity."""
+def _notify_service_options(hass: object) -> list[selector.SelectOptionDict]:
+    """
+    Return a sorted list of SelectOptionDict for all registered notify services.
+
+    Queries the live HA service registry so the list reflects exactly what is
+    available right now (companion app services appear once the device has
+    checked in). Called from async context so no I/O is needed.
+
+    Returns an empty list if no notify services are registered yet — the
+    selector falls back to a plain text field in that case.
+    """
+    try:
+        all_services: dict = hass.services.async_services()  # type: ignore[attr-defined]
+        notify_svcs = all_services.get("notify", {})
+        return [
+            selector.SelectOptionDict(
+                value=f"notify.{name}",
+                label=name.replace("_", " ").title(),
+            )
+            for name in sorted(notify_svcs.keys())
+            if name != "notify"  # skip the legacy meta-service
+        ]
+    except Exception:
+        return []
+
+
+def _step1_schema_with_notify(
+    notify_options: list[selector.SelectOptionDict],
+    defaults: dict[str, Any] | None = None,
+) -> vol.Schema:
+    """
+    Step 1 schema with the notify target field injected dynamically.
+
+    When notify services are available a multi-select is shown.
+    When none are registered yet (e.g. very first HA start before any phone
+    has connected) the field is omitted and the user can configure it later
+    via the options flow once devices appear.
+    """
     d = defaults or {}
-    return vol.Schema(
-        {
-            vol.Required(
-                CONF_ZONE_NAME,
-                default=d.get(CONF_ZONE_NAME, ""),
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-            vol.Required(
-                CONF_CALCULATION_TIME,
-                default=d.get(CONF_CALCULATION_TIME, DEFAULT_CALCULATION_TIME),
-            ): selector.TimeSelector(),
-            vol.Optional(
-                CONF_NOTIFY_ENABLED,
-                default=d.get(CONF_NOTIFY_ENABLED, False),
-            ): selector.BooleanSelector(),
+    schema_dict: dict = {
+        vol.Required(
+            CONF_ZONE_NAME,
+            default=d.get(CONF_ZONE_NAME, ""),
+        ): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+        ),
+        vol.Required(
+            CONF_CALCULATION_TIME,
+            default=d.get(CONF_CALCULATION_TIME, DEFAULT_CALCULATION_TIME),
+        ): selector.TimeSelector(),
+        vol.Optional(
+            CONF_NOTIFY_ENABLED,
+            default=d.get(CONF_NOTIFY_ENABLED, False),
+        ): selector.BooleanSelector(),
+    }
+
+    if notify_options:
+        # One or more notify services are available → show a multi-select.
+        # The stored value may be a single string (legacy) or a list; normalise
+        # to list so the selector pre-fills correctly in the options flow.
+        current_targets = d.get(CONF_NOTIFY_TARGET, [])
+        if isinstance(current_targets, str):
+            current_targets = [current_targets] if current_targets else []
+
+        schema_dict[
             vol.Optional(
                 CONF_NOTIFY_TARGET,
-                default=d.get(CONF_NOTIFY_TARGET, ""),
-            ): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
-            ),
-        }
-    )
+                default=current_targets,
+            )
+        ] = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=notify_options,
+                multiple=True,
+                mode=selector.SelectSelectorMode.LIST,
+            )
+        )
+
+    return vol.Schema(schema_dict)
 
 
 def _step2_schema(
@@ -229,7 +280,7 @@ def _step2_schema(
     d = defaults or {}
 
     crop_options = [
-        selector.SelectOptionDict(value=c.id, label=c.name) for c in available_crops()
+        selector.SelectOptionDict(value=c.id, label=c.name) for c in (crops_list or [])
     ]
 
     return vol.Schema(
@@ -412,9 +463,10 @@ class GardenIrrigationConfigFlow(ConfigFlow, domain=DOMAIN):
             self._data.update(user_input)
             return await self.async_step_zone_params()
 
+        notify_options = _notify_service_options(self.hass)
         return self.async_show_form(
             step_id="user",
-            data_schema=_step1_schema(),
+            data_schema=_step1_schema_with_notify(notify_options),
             errors=errors,
         )
 
@@ -489,9 +541,10 @@ class GardenIrrigationOptionsFlow(OptionsFlow):
             self._data.update(user_input)
             return await self.async_step_zone_params()
 
+        notify_options = _notify_service_options(self.hass)
         return self.async_show_form(
             step_id="user",
-            data_schema=_step1_schema(self._current()),
+            data_schema=_step1_schema_with_notify(notify_options, self._current()),
             errors=errors,
         )
 

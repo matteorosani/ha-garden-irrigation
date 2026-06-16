@@ -6,5 +6,7 @@
   "documentation": "https://github.com/matteorosani/ha-garden-irrigation",
   "requirements": [],
   "iot_class": "cloud_polling",
-  "codeowners": []
+  "codeowners": [
+    "matteorosani"
+  ]
 }

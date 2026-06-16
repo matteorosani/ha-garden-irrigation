@@ -8,13 +8,13 @@
           "zone_name": "Zone name",
           "calculation_time": "Daily calculation time",
           "notify_enabled": "Send notification after calculation",
-          "notify_target": "Notification service"
+          "notify_target": "Notification services"
         },
         "data_description": {
           "zone_name": "A descriptive name, e.g. \"Vegetable Field\".",
           "calculation_time": "When to run the daily ET₀ calculation and update sensors. Evening (23:00) is recommended — temperatures are fully known, rain data is settled, and the result is ready for your morning watering automation.",
           "notify_enabled": "If enabled, a push notification is sent after each daily calculation summarising whether watering is needed.",
-          "notify_target": "The notify service to use, e.g. notify.mobile_app_myphone. Leave blank to disable notifications even if the toggle is on."
+          "notify_target": "Select one or more notification services. If your phone foes not appear, open the Home Assistant companion app once to register it, the re-open this form."
         }
       },
       "zone_params": {
@@ -56,7 +56,7 @@
           "zone_name": "Zone name",
           "calculation_time": "Daily calculation time",
           "notify_enabled": "Send notification after calculation",
-          "notify_target": "Notification service"
+          "notify_target": "Notification services"
         }
       },
       "zone_params": {

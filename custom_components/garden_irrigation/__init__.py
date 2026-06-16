@@ -283,13 +283,12 @@ class ZoneCoordinator:
         if data.get(CONF_NOTIFY_ENABLED) and data.get(CONF_NOTIFY_TARGET):
             await self._async_notify(result, data[CONF_NOTIFY_TARGET])
 
-    async def _async_notify(self, result: IrrigationResult, target: str) -> None:
+    async def _async_notify(self, result: IrrigationResult, targets: list[str]) -> None:
         """
-        Send a push notification summarising the daily calculation.
+        Send a push notification to one or more notify services.
 
-        ``target`` is a notify service name, e.g. "notify.mobile_app_myphone".
-        The domain and service are split on the first dot so we can call
-        hass.services.async_call(domain, service, data).
+        ``targets`` is a list of service strings from the multi-select (e.g.
+        ["notify.mobile_app_alice", "notify.mobile_app_bob"]).
         """
         zone = self.entry.title
 
@@ -316,29 +315,34 @@ class ZoneCoordinator:
                 f"Rain yesterday: {result.daily.rain_mm:.1f} mm"
             )
 
-        # target is e.g. "notify.mobile_app_myphone"
-        # split into ("notify", "mobile_app_myphone") for the service call
-        parts = target.split(".", 1)
-        if len(parts) != 2:
-            _LOGGER.warning(
-                "Zone '%s': invalid notify target '%s' — expected 'domain.service'",
-                self.entry.title,
-                target,
-            )
-            return
+        # Normalise to list — handles both legacy string and new list value
+        if isinstance(targets, str):
+            targets = [targets] if targets else []
 
-        domain, service = parts
-        try:
-            await self.hass.services.async_call(
-                domain,
-                service,
-                {"title": title, "message": message},
-                blocking=False,
-            )
-        except Exception as err:
-            _LOGGER.warning(
-                "Zone '%s': notification failed — %s", self.entry.title, err
-            )
+        for target in targets:
+            parts = target.split(".", 1)
+            if len(parts) != 2:
+                _LOGGER.warning(
+                    "Zone '%s': invalid notify target '%s' — expected 'domain.service'",
+                    self.entry.title,
+                    target,
+                )
+                continue
+            domain, service = parts
+            try:
+                await self.hass.services.async_call(
+                    domain,
+                    service,
+                    {"title": title, "message": message},
+                    blocking=False,
+                )
+            except Exception as err:
+                _LOGGER.warning(
+                    "Zone '%s': notification to '%s' failed — %s",
+                    self.entry.title,
+                    target,
+                    err,
+                )
 
     # ── Button actions ─────────────────────────────────────────────────────────
 
