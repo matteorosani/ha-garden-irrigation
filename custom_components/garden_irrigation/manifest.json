@@ -1,0 +1,12 @@
+{
+  "domain": "garden_irrigation",
+  "name": "Garden Irrigation",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "https://github.com/matteorosani/ha-garden-irrigation",
+  "requirements": [],
+  "iot_class": "cloud_polling",
+  "codeowners": [
+    "matteorosani"
+  ]
+}

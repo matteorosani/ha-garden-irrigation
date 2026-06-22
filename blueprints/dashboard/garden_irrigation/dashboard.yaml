@@ -1,0 +1,126 @@
+# Garden Irrigation — zone dashboard template
+#
+# HOW TO USE
+# ──────────────────────────────────────────────────────────────────────────────
+#   1. Find your zone slug (see below)
+#   2. Replace every {ZONE} placeholder with your slug
+#   3. Go to your dashboard → Edit → ⋮ → "Edit in YAML"
+#   4. Paste the `views:` block below
+#
+# FINDING YOUR ZONE SLUG
+# ──────────────────────────────────────────────────────────────────────────────
+# The slug is your zone name, lowercased with spaces replaced by underscores.
+#   "Vegetable Field"  →  vegetable_field
+#   "Tomatoes East"    →  tomatoes_east
+# Confirm the exact slug by checking Developer Tools → States and filtering
+# by "garden" — the prefix before "_bucket_level" is your slug.
+#
+# MULTIPLE ZONES
+# ──────────────────────────────────────────────────────────────────────────────
+# Add one view per zone. Duplicate the view block and change the slug.
+#
+# Replace {ZONE} and {ZONE_TITLE} with your values before pasting.
+# Example: {ZONE} = vegetable_field, {ZONE_TITLE} = Vegetable Field
+
+views:
+  - title: "{ZONE_TITLE}"
+    icon: mdi:sprinkler-variant
+    path: "garden-{ZONE}"
+    cards:
+
+      # ── Status row ──────────────────────────────────────────────────────────
+      - type: glance
+        title: Today
+        columns: 3
+        entities:
+          - entity: sensor.{ZONE}_status
+            name: Status
+          - entity: sensor.{ZONE}_watering_duration
+            name: Duration (min)
+          - entity: sensor.{ZONE}_rain_yesterday
+            name: Rain yesterday
+
+      # ── Soil moisture gauge ─────────────────────────────────────────────────
+      - type: gauge
+        entity: sensor.{ZONE}_bucket_percentage
+        name: Soil moisture
+        unit: "%"
+        min: 0
+        max: 100
+        needle: true
+        severity:
+          green: 50
+          yellow: 25
+          red: 0
+
+      # ── Water balance ───────────────────────────────────────────────────────
+      - type: entities
+        title: Water balance
+        show_header_toggle: false
+        entities:
+          - entity: sensor.{ZONE}_bucket_level
+            name: Current level
+          - type: attribute
+            entity: sensor.{ZONE}_bucket_level
+            attribute: deficit_mm
+            name: Deficit to refill (mm)
+            icon: mdi:water-minus
+          - type: attribute
+            entity: sensor.{ZONE}_bucket_level
+            attribute: low_threshold_mm
+            name: Watering trigger (mm)
+            icon: mdi:alert-circle-outline
+          - type: divider
+          - entity: button.{ZONE}_record_irrigation
+            name: Record irrigation (automation ran)
+            action_name: Record
+          - entity: button.{ZONE}_reset_bucket
+            name: Reset bucket (manual watering)
+            action_name: Reset
+
+      # ── Today's calculation ─────────────────────────────────────────────────
+      - type: entities
+        title: Today's calculation
+        show_header_toggle: false
+        entities:
+          - entity: sensor.{ZONE}_et_today
+            name: Reference ET₀ (mm/day)
+          - entity: sensor.{ZONE}_crop_coefficient_kc
+            name: Crop coefficient (Kc)
+          - type: attribute
+            entity: sensor.{ZONE}_et_today
+            attribute: et_crop_mm
+            name: Crop consumption (ET₀ × Kc)
+            icon: mdi:water-minus-outline
+          - type: divider
+          - entity: sensor.{ZONE}_watering_duration
+            name: Recommended duration (min)
+          - type: attribute
+            entity: sensor.{ZONE}_watering_duration
+            attribute: volume_liters
+            name: Volume to deliver (L)
+            icon: mdi:water
+          - type: attribute
+            entity: sensor.{ZONE}_watering_duration
+            attribute: skip_reason
+            name: Skip reason (if any)
+            icon: mdi:information-outline
+
+      # ── 7-day history ───────────────────────────────────────────────────────
+      - type: history-graph
+        title: Soil moisture — 7 days
+        hours_to_show: 168
+        entities:
+          - entity: sensor.{ZONE}_bucket_level
+            name: Bucket (mm)
+          - entity: sensor.{ZONE}_rain_yesterday
+            name: Rain (mm)
+
+      - type: history-graph
+        title: ET₀ & Kc — 7 days
+        hours_to_show: 168
+        entities:
+          - entity: sensor.{ZONE}_et_today
+            name: ET₀ (mm/day)
+          - entity: sensor.{ZONE}_crop_coefficient_kc
+            name: Kc

@@ -1,0 +1,190 @@
+# Garden Irrigation — Watering Cycle Blueprint
+#
+# INSTALLATION
+# ─────────────
+# Option A (recommended): In HA go to
+#   Settings → Automations → Blueprints → Import Blueprint
+# and paste the raw URL of this file from your GitHub repository.
+#
+# Option B: Copy this file to
+#   config/blueprints/automation/garden_irrigation/watering_cycle.yaml
+# then go to Settings → Automations → Blueprints and it will appear.
+#
+# USAGE
+# ──────
+# Create one automation per irrigation zone using this blueprint.
+# The automation:
+#   1. Triggers at your chosen watering time (e.g. 06:00)
+#   2. Checks whether the integration calculated that watering is needed
+#   3. Opens the valve, waits the recommended duration, closes the valve
+#   4. Presses the "Record irrigation" button so the bucket model is updated
+#
+# The integration runs its calculation the evening before (default 23:00),
+# so by 06:00 the sensor value is already settled and accurate.
+
+blueprint:
+  name: Garden Irrigation — Watering Cycle
+  description: >
+    Opens a valve for the duration calculated by the Garden Irrigation
+    integration, then records the irrigation so the soil moisture model
+    stays accurate. Create one automation per zone.
+  domain: automation
+  author: garden_irrigation
+  homeassistant:
+    min_version: "2024.1.0"
+
+  input:
+
+    watering_time:
+      name: Watering time
+      description: >
+        When to open the valve. Should be several hours after the integration's
+        calculation time (default calculation is 23:00, so 06:00 - 08:00 works well).
+      default: "06:00:00"
+      selector:
+        time: {}
+
+    duration_sensor:
+      name: Watering duration sensor
+      description: >
+        The "Watering duration" sensor for this zone.
+        e.g. sensor.vegetable_field_watering_duration
+      selector:
+        entity:
+          domain: sensor
+          integration: garden_irrigation
+
+    valve_switch:
+      name: Valve switch
+      description: >
+        The valve entity that controls this zone's water valve.
+        e.g. valve.valve_zone_1
+      selector:
+        entity:
+          domain: valve
+
+    record_button:
+      name: Record irrigation button
+      description: >
+        The "Record irrigation" button for this zone.
+        e.g. button.vegetable_field_record_irrigation
+      selector:
+        entity:
+          domain: button
+          integration: garden_irrigation
+
+    max_duration:
+      name: Maximum watering duration (safety cutoff)
+      description: >
+        The valve will never stay open longer than this, even if the sensor
+        reports a higher value. Protects against a misconfigured flow rate
+        or zone area producing an unexpectedly large result.
+      default: 60
+      selector:
+        number:
+          min: 5
+          max: 240
+          step: 5
+          unit_of_measurement: min
+          mode: slider
+
+    notify_on_skip:
+      name: Notify when watering is skipped
+      description: >
+        Send a notification when the automation runs but skips watering
+        because the integration calculated none is needed.
+        Requires a notify service to be configured on your device.
+      default: false
+      selector:
+        boolean: {}
+
+    notify_target:
+      name: Notification service (optional)
+      description: >
+        Only used when "Notify when watering is skipped" is enabled.
+        Enter your notify service, e.g. notify.mobile_app_myphone.
+        Leave blank to disable skip notifications.
+      default: ""
+      selector:
+        text: {}
+
+# ── Variables ──────────────────────────────────────────────────────────────────
+# Inputs used inside templates must be captured as variables first.
+
+variables:
+  _duration_sensor: !input duration_sensor
+  _max_duration:    !input max_duration
+  _notify_skip:     !input notify_on_skip
+  _notify_target:   !input notify_target
+
+  # Actual duration: sensor value clamped to the safety maximum
+  _duration_minutes: >
+    {{ [states(_duration_sensor) | float(0), _max_duration] | min | round(0) | int }}
+
+# ── Trigger ────────────────────────────────────────────────────────────────────
+
+trigger:
+  - platform: time
+    at: !input watering_time
+
+# ── Conditions ─────────────────────────────────────────────────────────────────
+
+condition:
+  # Only proceed if the sensor has a valid numeric state
+  - condition: template
+    value_template: >
+      {{ states(_duration_sensor) | float(default=-1) >= 0 }}
+
+# ── Actions ────────────────────────────────────────────────────────────────────
+
+action:
+  - choose:
+
+    # ── Branch A: watering is needed ─────────────────────────────────────────
+    - conditions:
+        - condition: template
+          value_template: "{{ _duration_minutes > 0 }}"
+
+      sequence:
+
+        # Open the valve
+        - service: valve.open_valve
+          target:
+            entity_id: !input valve_switch
+
+        # Wait for the calculated duration
+        - delay:
+            minutes: "{{ _duration_minutes }}"
+
+        # Close the valve (always runs — even if something went wrong above)
+        - service: valve.close_valve
+          target:
+            entity_id: !input valve_switch
+
+        # Tell the integration that watering completed so it updates the bucket
+        - service: button.press
+          target:
+            entity_id: !input record_button
+
+    # ── Branch B: no watering needed ─────────────────────────────────────────
+    - conditions:
+        - condition: template
+          value_template: "{{ _duration_minutes == 0 }}"
+
+      sequence:
+        - if:
+            - condition: template
+              value_template: "{{ _notify_skip and _notify_target != '' }}"
+          then:
+            - service: "{{ _notify_target }}"
+              data:
+                title: "🌿 {{ state_attr(_duration_sensor, 'friendly_name') | regex_replace(' watering duration', '') }}: no watering today"
+                message: >
+                  {% set reason = state_attr(_duration_sensor, 'skip_reason') | default('') %}
+                  {% if 'rain' in reason %}Rain forecast — skipping.
+                  {% elif 'soil' in reason %}Soil moisture is sufficient.
+                  {% else %}No watering needed.
+                  {% endif %}
+
+mode: single
+max_exceeded: silent
