@@ -223,7 +223,7 @@ class ZoneCoordinator:
 
     # ── Daily cycle ────────────────────────────────────────────────────────────
 
-    def _async_scheduled_run(self, now: datetime) -> None:
+    async def _async_scheduled_run(self, now: datetime) -> None:
         """Time trigger callback — hand off to a task immediately."""
         self.hass.async_create_task(
             self._async_run(now.date()),
