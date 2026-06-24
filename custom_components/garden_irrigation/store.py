@@ -14,17 +14,25 @@ File layout
 {
     "version": 1,
     "data": {
-        "<entry_id_zone_1>": {"level": 18.5},
-        "<entry_id_zone_2>": {"level": 22.1}
+        "<entry_id_zone_1>": {
+            "level": 18.5,
+            "last_result": {
+                "should_water": true,
+                "duration_minutes": 24.0,
+                "water_mm": 8.5,
+                "volume_liters": 102.0,
+                "et0_mm": 6.2,
+                "kc": 1.15,
+                "et_crop_mm": 7.13,
+                "skip_reason": null
+            }
+        }
     }
 }
 
-Usage pattern (in __init__.py)
--------------------------------
-    store  = IrrigationStore(hass)
-    bucket = await store.async_load_bucket(entry.entry_id, bucket_config)
-    # ... daily calculation runs ...
-    await store.async_save_bucket(entry.entry_id, bucket)
+Persisting last_result means the watering duration sensor survives HA restarts
+and the morning automation can always read a valid value even if it starts before
+the next evening calculation.
 """
 
 from __future__ import annotations
@@ -37,6 +45,7 @@ from homeassistant.helpers.storage import Store
 
 from .bucket import BucketConfig, WaterBucket
 from .const import STORAGE_KEY, STORAGE_VERSION
+from .irrigator import IrrigationResult
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,7 +60,6 @@ class IrrigationStore:
     Parameters
     ----------
     hass : The HomeAssistant instance.
-
     """
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -59,64 +67,99 @@ class IrrigationStore:
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
+    async def async_load_zone(
+        self,
+        entry_id: str,
+        config: BucketConfig,
+    ) -> tuple[WaterBucket, IrrigationResult | None]:
+        """
+        Load persisted bucket and last_result for a zone.
+
+        Returns a fresh bucket at 50% capacity and None for last_result
+        when no persisted state exists (first run after installation).
+
+        Persisting last_result means the watering duration sensor always
+        shows the previous night's recommendation, even after HA restarts,
+        so the morning automation can read a valid value hours later.
+        """
+        data = await self._load_all()
+        zone_data = data.get(entry_id, {})
+
+        bucket = (
+            WaterBucket.from_dict(zone_data, config)
+            if zone_data
+            else WaterBucket(config)
+        )
+
+        last_result: IrrigationResult | None = None
+        if "last_result" in zone_data:
+            try:
+                last_result = IrrigationResult(**zone_data["last_result"])
+            except (TypeError, KeyError):
+                _LOGGER.debug(
+                    "Could not restore last_result for %s — will be None until "
+                    "next calculation",
+                    entry_id,
+                )
+
+        _LOGGER.debug(
+            "Restored zone %s: bucket=%.1f mm  last_result=%s",
+            entry_id,
+            bucket.level,
+            "present" if last_result else "absent",
+        )
+        return bucket, last_result
+
+    # Keep the old name as an alias for backward compatibility with tests
     async def async_load_bucket(
         self,
         entry_id: str,
         config: BucketConfig,
     ) -> WaterBucket:
-        """
-        Load the persisted bucket for a zone, or create a fresh one.
+        """Load only the bucket (legacy — prefer async_load_zone)."""
+        bucket, _ = await self.async_load_zone(entry_id, config)
+        return bucket
 
-        Parameters
-        ----------
-        entry_id : HA config entry ID for this zone.
-        config   : BucketConfig from the current config entry.
-                   Passed to ``WaterBucket.from_dict`` so that if the user
-                   changed ``max_capacity`` since the last save, the loaded
-                   level is correctly clamped to the new maximum.
-
-        Returns
-        -------
-        WaterBucket  — restored from disk, or a fresh bucket at 50 % capacity.
-
-        """
-        data = await self._load_all()
-
-        if entry_id in data:
-            _LOGGER.debug(
-                "Restoring bucket for entry %s: %s",
-                entry_id,
-                data[entry_id],
-            )
-            return WaterBucket.from_dict(data[entry_id], config)
-
-        _LOGGER.debug(
-            "No persisted state for entry %s — starting fresh bucket", entry_id
-        )
-        return WaterBucket(config)
-
-    async def async_save_bucket(
+    async def async_save_zone(
         self,
         entry_id: str,
         bucket: WaterBucket,
+        last_result: IrrigationResult | None = None,
     ) -> None:
         """
-        Persist the current bucket level for a zone.
+        Persist bucket level and optionally last_result for a zone.
 
-        Reads the full file, updates only this zone's entry, then writes
-        the whole file back. This prevents one zone's save from wiping
-        another zone's data in a concurrent write scenario.
-
-        Parameters
-        ----------
-        entry_id : HA config entry ID for this zone.
-        bucket   : The WaterBucket whose state should be saved.
-
+        Both are stored in the same JSON entry so a single file write
+        captures the full zone state atomically.
         """
         data = await self._load_all()
-        data[entry_id] = bucket.to_dict()
+        zone_data = bucket.to_dict()
+
+        if last_result is not None:
+            # IrrigationResult contains a nested DailyResult — serialise manually
+            zone_data["last_result"] = {
+                "should_water": last_result.should_water,
+                "duration_minutes": last_result.duration_minutes,
+                "water_mm": last_result.water_mm,
+                "volume_liters": last_result.volume_liters,
+                "et0_mm": last_result.et0_mm,
+                "kc": last_result.kc,
+                "et_crop_mm": last_result.et_crop_mm,
+                "bucket_level": last_result.bucket_level,
+                "bucket_percentage": last_result.bucket_percentage,
+                "skip_reason": last_result.skip_reason,
+                "daily": {
+                    "et_crop_mm": last_result.daily.et_crop_mm,
+                    "rain_mm": last_result.daily.rain_mm,
+                    "net_change": last_result.daily.net_change,
+                    "level_before": last_result.daily.level_before,
+                    "level_after": last_result.daily.level_after,
+                    "was_clamped": last_result.daily.was_clamped,
+                },
+            }
+
+        data[entry_id] = zone_data
         await self._store.async_save(data)
-        _LOGGER.debug("Saved bucket for entry %s: %s", entry_id, bucket.to_dict())
 
     async def async_remove_zone(self, entry_id: str) -> None:
         """
@@ -128,7 +171,6 @@ class IrrigationStore:
         Parameters
         ----------
         entry_id : HA config entry ID for the zone being removed.
-
         """
         data = await self._load_all()
 
