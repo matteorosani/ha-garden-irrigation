@@ -80,7 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     store = IrrigationStore(hass)
-    bucket = await store.async_load_bucket(entry.entry_id, bucket_config)
+    bucket, last_result = await store.async_load_zone(entry.entry_id, bucket_config)
 
     provider = OpenMeteoProvider(
         latitude=hass.config.latitude,
@@ -95,6 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         store=store,
         weather_provider=provider,
         zone_config=zone_config,
+        last_result=last_result,
     )
     await coordinator.async_setup()
 
@@ -164,7 +165,7 @@ async def _async_setup_crops(
 
 
 class ZoneCoordinator:
-    """Owns the daily calculation for one irrigation zone."""
+    """Owns the daily ET₀ calculation for one irrigation zone."""
 
     def __init__(
         self,
@@ -174,6 +175,7 @@ class ZoneCoordinator:
         store: IrrigationStore,
         weather_provider: OpenMeteoProvider,
         zone_config: ZoneConfig,
+        last_result: IrrigationResult | None = None,
     ) -> None:
         self.hass = hass
         self.entry = entry
@@ -181,7 +183,7 @@ class ZoneCoordinator:
         self._store = store
         self._weather = weather_provider
         self._zone = zone_config
-        self._last_result: IrrigationResult | None = None
+        self._last_result: IrrigationResult | None = last_result
         self._unsub: object = None
 
     @property
@@ -275,7 +277,9 @@ class ZoneCoordinator:
             result.skip_reason or "—",
         )
 
-        await self._store.async_save_bucket(self.entry.entry_id, self._bucket)
+        await self._store.async_save_zone(
+            self.entry.entry_id, self._bucket, self._last_result
+        )
         async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
 
         # Optional push notification
@@ -314,10 +318,6 @@ class ZoneCoordinator:
                 f"ET₀: {result.et0_mm:.1f} mm · Kc: {result.kc:.2f}\n"
                 f"Rain yesterday: {result.daily.rain_mm:.1f} mm"
             )
-
-        # Normalise to list — handles both legacy string and new list value
-        if isinstance(targets, str):
-            targets = [targets] if targets else []
 
         for target in targets:
             parts = target.split(".", 1)
@@ -358,7 +358,9 @@ class ZoneCoordinator:
             return
 
         self._bucket.add_irrigation(self._last_result.water_mm)
-        await self._store.async_save_bucket(self.entry.entry_id, self._bucket)
+        await self._store.async_save_zone(
+            self.entry.entry_id, self._bucket, self._last_result
+        )
         async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
 
         _LOGGER.info(
@@ -374,7 +376,9 @@ class ZoneCoordinator:
         from homeassistant.helpers.dispatcher import async_dispatcher_send
 
         self._bucket.reset()
-        await self._store.async_save_bucket(self.entry.entry_id, self._bucket)
+        await self._store.async_save_zone(
+            self.entry.entry_id, self._bucket, self._last_result
+        )
         async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
         _LOGGER.info(
             "Zone '%s': bucket manually reset to %.1f mm",
