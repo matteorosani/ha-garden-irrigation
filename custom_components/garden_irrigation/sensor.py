@@ -1,29 +1,26 @@
 """
-Sensor platform — Garden Irrigation.
+Sensor platform - Garden Irrigation.
 
-Exposes the irrigation state for one zone as Home Assistant sensor entities.
-All sensors are push-based (should_poll = False): the ZoneCoordinator
-dispatches a signal after each daily run and the entities write their new
-state immediately.
+All sensors share a single base class that:
+  - Groups entities under the zone device
+  - Subscribes to dispatcher updates (the HA-idiomatic push pattern)
+  - Inherits RestoreSensor so the last known value survives HA restarts
 
-Entities created per zone
---------------------------
-  Bucket Level        — current soil water level [mm]
-  Bucket Percentage   — level as % of max capacity
-  ET₀ Today           — reference evapotranspiration [mm/day]
-  Crop Coefficient    — effective Kc for today's growth stage
-  Watering Duration   — scheduled valve open time today [min]
-  Rain Yesterday      — measured precipitation from yesterday [mm]
-  Status              — human-readable summary of today's decision
+RestoreSensor works via HA's state machine: on startup it calls
+async_get_last_sensor_data() which returns the last written state.
+Each native_value property checks coordinator.last_result first (fresh
+calculation data) and falls back to the restored _attr_native_value when
+the coordinator hasn't run yet since startup.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
-    SensorEntity,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -31,11 +28,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from propcache import cached_property
 
 from . import ZoneCoordinator, signal_update
 from .const import DOMAIN
 from .irrigator import SKIP_BUCKET_SUFFICIENT, SKIP_FORECAST_RAIN_SUFFICIENT
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -45,7 +43,6 @@ async def async_setup_entry(
 ) -> None:
     """Create all sensor entities for this zone."""
     coordinator: ZoneCoordinator = hass.data[DOMAIN][entry.entry_id]
-
     async_add_entities(
         [
             BucketLevelSensor(coordinator, entry),
@@ -59,61 +56,69 @@ async def async_setup_entry(
     )
 
 
-# ── Base class ─────────────────────────────────────────────────────────────────
+# -- Base class ----------------------------------------------------------------
 
 
-class ZoneSensorBase(SensorEntity):
+class ZoneSensorBase(RestoreSensor):
     """
     Common base for all Garden Irrigation sensors.
 
-    Handles device grouping, dispatcher subscription, and the push-based
-    state update pattern. Concrete subclasses only need to implement
-    ``native_value`` and optionally ``extra_state_attributes``.
+    Inherits RestoreSensor so every sensor's last known value survives
+    HA restarts. The dispatcher subscription pushes updates from the
+    coordinator whenever a calculation completes or a button is pressed.
     """
 
-    _attr_has_entity_name = True  # name is relative to the device
-    _attr_should_poll = False  # coordinator pushes updates
+    _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         self._coordinator = coordinator
         self._entry = entry
 
-    # ── Device grouping ────────────────────────────────────────────────────────
-
-    @cached_property
+    @property
     def device_info(self) -> DeviceInfo:
-        """All sensors for this zone appear under the same HA device."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.entry_id)},
             name=self._entry.title,
             manufacturer="Garden Irrigation",
             model="Drip Irrigation Zone",
-            entry_type=None,
         )
 
-    # ── Dispatcher subscription ────────────────────────────────────────────────
-
     async def async_added_to_hass(self) -> None:
-        """Subscribe to coordinator updates when entity is added to HA."""
+        """Subscribe to dispatcher updates and restore previous state."""
+        await super().async_added_to_hass()  # RestoreSensor chain
+
+        # Restore the last known native_value from HA's state machine
+        if (last := await self.async_get_last_sensor_data()) is not None:
+            self._attr_native_value = last.native_value
+            _LOGGER.debug(
+                "sensor | %s | restored value: %s",
+                self.entity_id,
+                last.native_value,
+            )
+
+        # Subscribe to coordinator push updates
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
                 signal_update(self._entry.entry_id),
-                self._handle_coordinator_update,
+                self._handle_update,
             )
         )
+        _LOGGER.debug("sensor | %s | subscribed to dispatcher", self.entity_id)
 
     @callback
-    def _handle_coordinator_update(self) -> None:
-        """Called by the dispatcher; tells HA to re-read native_value."""
+    def _handle_update(self) -> None:
+        """Dispatcher callback — write new state to HA."""
+        _LOGGER.debug("sensor | %s | dispatcher update received", self.entity_id)
         self.async_write_ha_state()
 
 
-# ── Concrete sensors ───────────────────────────────────────────────────────────
+# -- Concrete sensors ----------------------------------------------------------
 
 
 class BucketLevelSensor(ZoneSensorBase):
-    """Current soil water level in mm."""
+    """Current soil water level [mm]. Always live from the bucket object."""
 
     _attr_icon = "mdi:pail"
     _attr_native_unit_of_measurement = "mm"
@@ -124,23 +129,24 @@ class BucketLevelSensor(ZoneSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_bucket_level"
         self._attr_name = "Bucket level"
 
-    @cached_property
-    def native_value(self) -> float | None:
+    @property
+    def native_value(self) -> float:
+        # Always live — bucket is restored from storage on startup
         return round(self._coordinator.bucket.level, 1)
 
-    @cached_property
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        bucket = self._coordinator.bucket
+        b = self._coordinator.bucket
         return {
-            "max_capacity_mm": bucket.config.max_capacity,
-            "low_threshold_mm": bucket.config.low_threshold,
-            "deficit_mm": round(bucket.deficit_mm, 1),
-            "needs_water": bucket.needs_water,
+            "max_capacity_mm": b.config.max_capacity,
+            "low_threshold_mm": b.config.low_threshold,
+            "deficit_mm": round(b.deficit_mm, 1),
+            "needs_water": b.needs_water,
         }
 
 
 class BucketPercentageSensor(ZoneSensorBase):
-    """Bucket level as a percentage of maximum capacity. Useful for gauge cards."""
+    """Bucket level as % of max capacity."""
 
     _attr_icon = "mdi:gauge"
     _attr_native_unit_of_measurement = "%"
@@ -151,13 +157,13 @@ class BucketPercentageSensor(ZoneSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_bucket_percentage"
         self._attr_name = "Bucket percentage"
 
-    @cached_property
-    def native_value(self) -> float | None:
+    @property
+    def native_value(self) -> float:
         return self._coordinator.bucket.percentage
 
 
 class Et0Sensor(ZoneSensorBase):
-    """Reference evapotranspiration ET₀ computed for today [mm/day]."""
+    """Reference ET0 for today [mm/day]."""
 
     _attr_icon = "mdi:weather-sunny"
     _attr_native_unit_of_measurement = "mm/day"
@@ -166,33 +172,25 @@ class Et0Sensor(ZoneSensorBase):
     def __init__(self, coordinator: ZoneCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_unique_id = f"{entry.entry_id}_et0"
-        self._attr_name = "ET₀ today"
+        self._attr_name = "ET\u2080 today"
 
-    @cached_property
+    @property
     def native_value(self) -> float | None:
         result = self._coordinator.last_result
-        if result is None:
-            return None
-        return result.et0_mm
+        if result is not None:
+            self._attr_native_value = result.et0_mm
+        return self._attr_native_value  # type: ignore[return-value]
 
-    @cached_property
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         result = self._coordinator.last_result
         if result is None:
             return {}
-        return {
-            "kc": result.kc,
-            "et_crop_mm": result.et_crop_mm,
-        }
+        return {"kc": result.kc, "et_crop_mm": result.et_crop_mm}
 
 
 class KcSensor(ZoneSensorBase):
-    """
-    Effective crop coefficient for today.
-
-    Shows the averaged Kc across all crops in the zone, interpolated
-    to the current growth stage based on the planting date.
-    """
+    """Effective crop coefficient for today's growth stage."""
 
     _attr_icon = "mdi:leaf"
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -202,20 +200,20 @@ class KcSensor(ZoneSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_kc"
         self._attr_name = "Crop coefficient (Kc)"
 
-    @cached_property
+    @property
     def native_value(self) -> float | None:
         result = self._coordinator.last_result
-        if result is None:
-            return None
-        return result.kc
+        if result is not None:
+            self._attr_native_value = result.kc
+        return self._attr_native_value  # type: ignore[return-value]
 
 
 class WateringDurationSensor(ZoneSensorBase):
     """
-    Planned (or last executed) valve open time for today [min].
+    Recommended valve open time today [min].
 
-    Returns 0 when watering was skipped. The ``skip_reason`` attribute
-    explains why, e.g. "bucket_sufficient" or "forecast_rain_sufficient".
+    Falls back to the value restored by RestoreSensor so the morning
+    automation can read a valid duration even after an HA restart.
     """
 
     _attr_icon = "mdi:timer-outline"
@@ -227,14 +225,14 @@ class WateringDurationSensor(ZoneSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_watering_duration"
         self._attr_name = "Watering duration"
 
-    @cached_property
+    @property
     def native_value(self) -> float | None:
         result = self._coordinator.last_result
-        if result is None:
-            return None
-        return result.duration_minutes
+        if result is not None:
+            self._attr_native_value = result.duration_minutes
+        return self._attr_native_value  # type: ignore[return-value]
 
-    @cached_property
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         result = self._coordinator.last_result
         if result is None:
@@ -250,7 +248,7 @@ class WateringDurationSensor(ZoneSensorBase):
 
 
 class RainYesterdaySensor(ZoneSensorBase):
-    """Measured precipitation from yesterday [mm], used to update the bucket."""
+    """Measured precipitation from yesterday [mm]."""
 
     _attr_icon = "mdi:weather-rainy"
     _attr_device_class = SensorDeviceClass.PRECIPITATION
@@ -262,14 +260,14 @@ class RainYesterdaySensor(ZoneSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_rain_yesterday"
         self._attr_name = "Rain yesterday"
 
-    @cached_property
+    @property
     def native_value(self) -> float | None:
         result = self._coordinator.last_result
-        if result is None:
-            return None
-        return result.daily.rain_mm
+        if result is not None:
+            self._attr_native_value = result.daily.rain_mm
+        return self._attr_native_value  # type: ignore[return-value]
 
-    @cached_property
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         result = self._coordinator.last_result
         if result is None:
@@ -281,15 +279,7 @@ class RainYesterdaySensor(ZoneSensorBase):
 
 
 class StatusSensor(ZoneSensorBase):
-    """
-    Human-readable summary of today's irrigation decision.
-
-    Possible values:
-      "Water needed"       — duration > 0, waiting for automation to run valve
-      "Skipped: rain"      — forecast rain is sufficient
-      "Skipped: soil ok"   — bucket above threshold, no watering needed
-      "Idle"               — no daily result yet (before first run)
-    """
+    """Human-readable summary of today's irrigation decision."""
 
     _attr_icon = "mdi:sprinkler"
 
@@ -298,16 +288,21 @@ class StatusSensor(ZoneSensorBase):
         self._attr_unique_id = f"{entry.entry_id}_status"
         self._attr_name = "Status"
 
-    @cached_property
+    @property
     def native_value(self) -> str:
         result = self._coordinator.last_result
         if result is None:
-            return "Idle"
-        if result.should_water:
-            return "Water needed"
-        return _skip_reason_label(result.skip_reason or "")
+            # No fresh result — return restored value or Idle
+            return self._attr_native_value or "Idle"  # type: ignore[return-value]
+        status = (
+            "Water needed"
+            if result.should_water
+            else _skip_reason_label(result.skip_reason or "")
+        )
+        self._attr_native_value = status
+        return status
 
-    @cached_property
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         result = self._coordinator.last_result
         if result is None:
@@ -321,11 +316,10 @@ class StatusSensor(ZoneSensorBase):
         }
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 
 def _skip_reason_label(reason: str) -> str:
-    """Convert internal skip reason constants to dashboard-friendly strings."""
     return {
         SKIP_BUCKET_SUFFICIENT: "Skipped: soil ok",
         SKIP_FORECAST_RAIN_SUFFICIENT: "Skipped: rain forecast",
