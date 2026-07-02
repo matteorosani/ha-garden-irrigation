@@ -162,10 +162,21 @@ def _inject_ha_stubs() -> None:
     ha_ce.OptionsFlow = _OptionsFlow
     ha_entity.DeviceInfo = dict
     ha_ep.AddEntitiesCallback = MagicMock
+
+    class _RestoreSensor(_SensorEntity):
+        async def async_get_last_sensor_data(self):
+            return None
+
+        async def async_added_to_hass(self):
+            pass
+
     ha_sensor.SensorEntity = _SensorEntity
+    ha_sensor.RestoreSensor = _RestoreSensor
+    ha_sensor.SensorExtraStoredData = MagicMock
     ha_sensor.SensorDeviceClass = _stub
     ha_sensor.SensorStateClass = _stub
     ha_button.ButtonEntity = _ButtonEntity
+    ha_core.callback = _callback
 
     ha_selector.SelectOptionDict = dict
     ha_selector.SelectSelectorMode = _stub

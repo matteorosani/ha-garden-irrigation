@@ -1,11 +1,9 @@
 """
-Garden Irrigation — entry point and zone coordinator.
+Garden Irrigation - entry point and zone coordinator.
 
-Import discipline
------------------
-All homeassistant.* imports are lazy (inside function bodies or guarded by
-TYPE_CHECKING) so that importing any submodule of this package in unit tests
-does NOT trigger HA's deep import chain.
+All homeassistant.* imports are lazy (inside function bodies or TYPE_CHECKING)
+so that importing any submodule in unit tests does NOT trigger HA's deep
+import chain.
 """
 
 from __future__ import annotations
@@ -30,7 +28,7 @@ from .const import (
 )
 from .irrigator import IrrigationResult, ZoneConfig, calculate
 from .kc import load_crops, set_user_crops_file
-from .store import IrrigationStore
+from .store import IrrigationStore, PendingWatering
 from .weather.open_meteo import OpenMeteoProvider
 
 if TYPE_CHECKING:
@@ -42,28 +40,29 @@ PLATFORMS = ["sensor", "button"]
 
 
 def signal_update(entry_id: str) -> str:
-    """Dispatcher signal string used by coordinator → entities."""
+    """Dispatcher signal string for coordinator → entity updates."""
     return f"{DOMAIN}_{entry_id}_update"
 
 
-# ── HA lifecycle ───────────────────────────────────────────────────────────────
+# -- HA lifecycle --------------------------------------------------------------
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up one Garden Irrigation zone from a config entry."""
     from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+    _LOGGER.debug("setup | zone=%s | starting", entry.title)
+
     hass.data.setdefault(DOMAIN, {})
 
-    # Load crops in an executor thread (file I/O must not block the event loop).
-    # _async_setup_crops also sets the user crops path and logs whether the file
-    # was found, giving the user a clear signal about where to put their crops.
     user_crops_path = os.path.join(
         hass.config.config_dir, "garden_irrigation_crops.json"
     )
     user_crops_loaded = await _async_setup_crops(hass, user_crops_path)
-    hass.data.setdefault(f"{DOMAIN}_user_crops_loaded", {})[entry.entry_id] = (
-        user_crops_loaded
+    _LOGGER.debug(
+        "setup | zone=%s | user crops: %s",
+        entry.title,
+        "loaded" if user_crops_loaded else "not found (bundled only)",
     )
 
     data = {**entry.data, **entry.options}
@@ -80,7 +79,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     store = IrrigationStore(hass)
-    bucket, last_result = await store.async_load_zone(entry.entry_id, bucket_config)
+    bucket = await store.async_load_bucket(entry.entry_id, bucket_config)
+    pending = await store.async_load_pending(entry.entry_id)
+
+    _LOGGER.info(
+        "setup | zone=%s | bucket=%.1f mm (%.0f%%)  pending=%s",
+        entry.title,
+        bucket.level,
+        bucket.percentage,
+        f"{pending.duration_minutes:.0f} min" if pending else "none",
+    )
 
     provider = OpenMeteoProvider(
         latitude=hass.config.latitude,
@@ -95,7 +103,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         store=store,
         weather_provider=provider,
         zone_config=zone_config,
-        last_result=last_result,
+        pending=pending,
     )
     await coordinator.async_setup()
 
@@ -104,7 +112,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    _LOGGER.info("Garden Irrigation: zone '%s' loaded", entry.title)
+    _LOGGER.info("setup | zone=%s | complete", entry.title)
     return True
 
 
@@ -114,6 +122,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if ok:
         coordinator: ZoneCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
         await coordinator.async_teardown()
+        _LOGGER.debug("setup | zone=%s | unloaded", entry.title)
     return ok
 
 
@@ -165,7 +174,14 @@ async def _async_setup_crops(
 
 
 class ZoneCoordinator:
-    """Owns the daily ET₀ calculation for one irrigation zone."""
+    """
+    Owns the daily ET0 calculation for one irrigation zone.
+
+    Updates are pushed to sensor entities via HA's dispatcher, which is the
+    idiomatic HA approach for push-based sensor updates from a custom
+    coordinator. Sensors subscribe in async_added_to_hass via
+    async_dispatcher_connect and unsubscribe automatically via async_on_remove.
+    """
 
     def __init__(
         self,
@@ -175,7 +191,7 @@ class ZoneCoordinator:
         store: IrrigationStore,
         weather_provider: OpenMeteoProvider,
         zone_config: ZoneConfig,
-        last_result: IrrigationResult | None = None,
+        pending: PendingWatering | None = None,
     ) -> None:
         self.hass = hass
         self.entry = entry
@@ -183,8 +199,11 @@ class ZoneCoordinator:
         self._store = store
         self._weather = weather_provider
         self._zone = zone_config
-        self._last_result: IrrigationResult | None = last_result
+        self._pending = pending  # restored from store on startup
+        self._last_result: IrrigationResult | None = None
         self._unsub: object = None
+
+    # -- Properties ------------------------------------------------------------
 
     @property
     def bucket(self) -> WaterBucket:
@@ -194,10 +213,15 @@ class ZoneCoordinator:
     def last_result(self) -> IrrigationResult | None:
         return self._last_result
 
-    # ── Lifecycle ──────────────────────────────────────────────────────────────
+    @property
+    def pending(self) -> PendingWatering | None:
+        """Pending watering from last calculation, survives HA restarts."""
+        return self._pending
+
+    # -- Lifecycle -------------------------------------------------------------
 
     async def async_setup(self) -> None:
-        """Register the daily calculation trigger."""
+        """Register the daily calculation time trigger."""
         from homeassistant.helpers.event import async_track_time_change
 
         calc_time = self.entry.data[CONF_CALCULATION_TIME]
@@ -211,49 +235,66 @@ class ZoneCoordinator:
             second=0,
         )
         _LOGGER.debug(
-            "Zone '%s': daily calculation scheduled at %02d:%02d",
+            "coordinator | zone=%s | calculation scheduled at %02d:%02d",
             self.entry.title,
             hour,
             minute,
         )
 
     async def async_teardown(self) -> None:
-        """Cancel the daily schedule."""
         if self._unsub:
             self._unsub()  # type: ignore[operator]
             self._unsub = None
 
-    # ── Daily cycle ────────────────────────────────────────────────────────────
+    # -- Daily calculation -----------------------------------------------------
 
     async def _async_scheduled_run(self, now: datetime) -> None:
-        """Time trigger callback — hand off to a task immediately."""
+        """
+        Time trigger callback. async so HA calls it on the event loop
+        rather than in a thread pool executor (Python 3.14+ requirement).
+        """
+        _LOGGER.debug(
+            "coordinator | zone=%s | time trigger fired at %s",
+            self.entry.title,
+            now.strftime("%H:%M"),
+        )
         self.hass.async_create_task(
             self._async_run(now.date()),
             name=f"{DOMAIN}_{self.entry.entry_id}_daily",
         )
 
     async def _async_run(self, today: date) -> None:
-        """
-        Daily calculation cycle.
-
-        Runs at CONF_CALCULATION_TIME (recommended: 23:00).
-        Updates the bucket model, persists state, notifies entities,
-        and optionally pushes a summary notification to the user.
-        """
+        """Full daily calculation cycle."""
         from homeassistant.helpers.dispatcher import async_dispatcher_send
 
-        _LOGGER.debug("Zone '%s': daily calculation for %s", self.entry.title, today)
+        _LOGGER.info(
+            "coordinator | zone=%s | calculation started for %s",
+            self.entry.title,
+            today,
+        )
 
+        # 1 - Weather
         try:
             weather = await self._weather.get_data()
+            _LOGGER.debug(
+                "coordinator | zone=%s | weather: Tmin=%.1f Tmax=%.1f "
+                "rain_yesterday=%.1f mm  forecast=%.1f mm",
+                self.entry.title,
+                weather.temp_min,
+                weather.temp_max,
+                weather.precipitation_mm,
+                weather.forecast_precip_mm,
+            )
         except Exception as err:
             _LOGGER.error(
-                "Zone '%s': weather fetch failed, skipping today — %s",
+                "coordinator | zone=%s | weather fetch failed: %s",
                 self.entry.title,
                 err,
             )
+            async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
             return
 
+        # 2 - Calculate
         result = calculate(
             weather=weather,
             zone=self._zone,
@@ -264,8 +305,9 @@ class ZoneCoordinator:
         self._last_result = result
 
         _LOGGER.info(
-            "Zone '%s': ET₀=%.2f  Kc=%.2f  rain=%.1f mm  "
-            "bucket=%.1f mm (%.0f%%)  should_water=%s  duration=%.1f min  reason=%s",
+            "coordinator | zone=%s | ET0=%.2f mm  Kc=%.2f  "
+            "rain=%.1f mm  bucket=%.1f mm (%.0f%%)  "
+            "should_water=%s  duration=%.1f min  reason=%s",
             self.entry.title,
             result.et0_mm,
             result.kc,
@@ -274,26 +316,104 @@ class ZoneCoordinator:
             result.bucket_percentage,
             result.should_water,
             result.duration_minutes,
-            result.skip_reason or "—",
+            result.skip_reason or "n/a",
         )
 
-        await self._store.async_save_zone(
-            self.entry.entry_id, self._bucket, self._last_result
+        # 3 - Build pending record and persist
+        pending = (
+            PendingWatering(
+                should_water=True,
+                water_mm=result.water_mm,
+                duration_minutes=result.duration_minutes,
+                volume_liters=result.volume_liters,
+            )
+            if result.should_water
+            else None
         )
+        self._pending = pending
+        await self._store.async_save_bucket_and_pending(
+            self.entry.entry_id, self._bucket, pending
+        )
+
+        # 4 - Notify sensors via dispatcher
         async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
 
-        # Optional push notification
+        # 5 - Optional push notification
         data = {**self.entry.data, **self.entry.options}
         if data.get(CONF_NOTIFY_ENABLED) and data.get(CONF_NOTIFY_TARGET):
             await self._async_notify(result, data[CONF_NOTIFY_TARGET])
 
-    async def _async_notify(self, result: IrrigationResult, targets: list[str]) -> None:
-        """
-        Send a push notification to one or more notify services.
+    # -- Button actions --------------------------------------------------------
 
-        ``targets`` is a list of service strings from the multi-select (e.g.
-        ["notify.mobile_app_alice", "notify.mobile_app_bob"]).
+    async def async_trigger_calculation(self) -> None:
+        """Trigger the ET0 calculation immediately (Calculate now button)."""
+        _LOGGER.info(
+            "coordinator | zone=%s | manual calculation requested",
+            self.entry.title,
+        )
+        await self._async_run(date.today())
+
+    async def async_record_irrigation(self) -> None:
         """
+        Register that the automation completed a watering cycle.
+
+        Works correctly after HA restarts because the pending record is
+        restored from storage — coordinator.last_result doesn't need to
+        be set for this to function.
+        """
+        from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+        # Use pending (survives restarts) rather than last_result (in-memory only)
+        pending = self._pending
+        if pending is None or not pending.should_water:
+            _LOGGER.warning(
+                "coordinator | zone=%s | record_irrigation called but "
+                "no pending watering — ignored",
+                self.entry.title,
+            )
+            return
+
+        self._bucket.add_irrigation(pending.water_mm)
+        self._pending = None
+        await self._store.async_save_bucket_and_pending(
+            self.entry.entry_id, self._bucket, None
+        )
+        async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
+
+        _LOGGER.info(
+            "coordinator | zone=%s | recorded %.1f mm irrigation — "
+            "bucket now %.1f mm (%.0f%%)",
+            self.entry.title,
+            pending.water_mm,
+            self._bucket.level,
+            self._bucket.percentage,
+        )
+
+    async def async_reset_bucket(self) -> None:
+        """Reset bucket to max capacity (manual watering or heavy rain)."""
+        from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+        self._bucket.reset()
+        self._pending = None
+        await self._store.async_save_bucket_and_pending(
+            self.entry.entry_id, self._bucket, None
+        )
+        async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
+
+        _LOGGER.info(
+            "coordinator | zone=%s | bucket reset to %.1f mm",
+            self.entry.title,
+            self._bucket.level,
+        )
+
+    # -- Notification ----------------------------------------------------------
+
+    async def _async_notify(
+        self,
+        result: IrrigationResult,
+        targets: list[str],
+    ) -> None:
+        """Send push notification(s) summarising the daily calculation."""
         zone = self.entry.title
 
         if result.should_water:
@@ -303,7 +423,7 @@ class ZoneCoordinator:
                 f"({result.volume_liters:.0f} L)\n"
                 f"Bucket: {result.bucket_percentage:.0f}% "
                 f"({result.bucket_level:.1f} mm)\n"
-                f"ET₀: {result.et0_mm:.1f} mm · Kc: {result.kc:.2f}"
+                f"ET0: {result.et0_mm:.1f} mm · Kc: {result.kc:.2f}"
             )
         else:
             reasons = {
@@ -315,7 +435,7 @@ class ZoneCoordinator:
             message = (
                 f"Bucket: {result.bucket_percentage:.0f}% "
                 f"({result.bucket_level:.1f} mm)\n"
-                f"ET₀: {result.et0_mm:.1f} mm · Kc: {result.kc:.2f}\n"
+                f"ET0: {result.et0_mm:.1f} mm · Kc: {result.kc:.2f}\n"
                 f"Rain yesterday: {result.daily.rain_mm:.1f} mm"
             )
 
@@ -323,7 +443,7 @@ class ZoneCoordinator:
             parts = target.split(".", 1)
             if len(parts) != 2:
                 _LOGGER.warning(
-                    "Zone '%s': invalid notify target '%s' — expected 'domain.service'",
+                    "coordinator | zone=%s | invalid notify target '%s'",
                     self.entry.title,
                     target,
                 )
@@ -336,52 +456,15 @@ class ZoneCoordinator:
                     {"title": title, "message": message},
                     blocking=False,
                 )
+                _LOGGER.debug(
+                    "coordinator | zone=%s | notification sent via %s",
+                    self.entry.title,
+                    target,
+                )
             except Exception as err:
                 _LOGGER.warning(
-                    "Zone '%s': notification to '%s' failed — %s",
+                    "coordinator | zone=%s | notification to '%s' failed: %s",
                     self.entry.title,
                     target,
                     err,
                 )
-
-    # ── Button actions ─────────────────────────────────────────────────────────
-
-    async def async_record_irrigation(self) -> None:
-        """Called by the automation blueprint after the valve closes."""
-        from homeassistant.helpers.dispatcher import async_dispatcher_send
-
-        if self._last_result is None or not self._last_result.should_water:
-            _LOGGER.warning(
-                "Zone '%s': record_irrigation called with no pending need — ignored",
-                self.entry.title,
-            )
-            return
-
-        self._bucket.add_irrigation(self._last_result.water_mm)
-        await self._store.async_save_zone(
-            self.entry.entry_id, self._bucket, self._last_result
-        )
-        async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
-
-        _LOGGER.info(
-            "Zone '%s': recorded %.1f mm — bucket now %.1f mm (%.0f%%)",
-            self.entry.title,
-            self._last_result.water_mm,
-            self._bucket.level,
-            self._bucket.percentage,
-        )
-
-    async def async_reset_bucket(self) -> None:
-        """Reset bucket to full capacity (manual watering or heavy rain)."""
-        from homeassistant.helpers.dispatcher import async_dispatcher_send
-
-        self._bucket.reset()
-        await self._store.async_save_zone(
-            self.entry.entry_id, self._bucket, self._last_result
-        )
-        async_dispatcher_send(self.hass, signal_update(self.entry.entry_id))
-        _LOGGER.info(
-            "Zone '%s': bucket manually reset to %.1f mm",
-            self.entry.title,
-            self._bucket.level,
-        )
