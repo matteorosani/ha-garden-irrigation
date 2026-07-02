@@ -1,7 +1,7 @@
 {
   "domain": "garden_irrigation",
   "name": "Garden Irrigation",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "config_flow": true,
   "documentation": "https://github.com/matteorosani/ha-garden-irrigation",
   "requirements": [],
