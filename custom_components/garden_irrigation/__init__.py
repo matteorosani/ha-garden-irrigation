@@ -18,7 +18,6 @@ from .const import (
     CONF_CALCULATION_TIME,
     CONF_CROPS,
     CONF_FLOW_RATE,
-    CONF_LOW_THRESHOLD,
     CONF_MAX_BUCKET,
     CONF_NOTIFY_ENABLED,
     CONF_NOTIFY_TARGET,
@@ -67,15 +66,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     data = {**entry.data, **entry.options}
 
+    crop_ids = list(data[CONF_CROPS])
+    max_capacity = float(data[CONF_MAX_BUCKET])
+
+    # Derive threshold from crop sensitivity — most sensitive crop in zone wins
+    from .kc import threshold_for_zone
+
+    low_threshold, threshold_crop = threshold_for_zone(crop_ids, max_capacity)
+
+    _LOGGER.info(
+        "setup | zone=%s | threshold=%.1f mm (%.0f%% of %.0f mm, determined by %s)",
+        entry.title,
+        low_threshold,
+        low_threshold / max_capacity * 100,
+        max_capacity,
+        threshold_crop,
+    )
+
     zone_config = ZoneConfig(
-        crop_ids=list(data[CONF_CROPS]),
+        crop_ids=crop_ids,
         planting_date=date.fromisoformat(data[CONF_PLANTING_DATE]),
         zone_area_m2=float(data[CONF_ZONE_AREA]),
         flow_rate_lpm=float(data[CONF_FLOW_RATE]),
     )
     bucket_config = BucketConfig(
-        max_capacity=float(data[CONF_MAX_BUCKET]),
-        low_threshold=float(data[CONF_LOW_THRESHOLD]),
+        max_capacity=max_capacity,
+        low_threshold=low_threshold,
     )
 
     store = IrrigationStore(hass)
@@ -202,6 +218,10 @@ class ZoneCoordinator:
         self._pending = pending  # restored from store on startup
         self._last_result: IrrigationResult | None = None
         self._unsub: object = None
+        # Set by record_irrigation / reset_bucket; cleared by the next calculation.
+        # Allows sensors to show an up-to-date status immediately after a button
+        # press without waiting for the next scheduled calculation.
+        self._status_override: str | None = None
 
     # -- Properties ------------------------------------------------------------
 
@@ -217,6 +237,41 @@ class ZoneCoordinator:
     def pending(self) -> PendingWatering | None:
         """Pending watering from last calculation, survives HA restarts."""
         return self._pending
+
+    @property
+    def watering_duration_minutes(self) -> float | None:
+        """
+        Duration the valve should open today [min].
+
+        - Pending watering exists → pending duration (calculation said water)
+        - Calculation ran, no pending → 0 (either completed or not needed)
+        - No data at all → None (RestoreSensor will supply the previous value)
+        """
+        if self._pending is not None:
+            return self._pending.duration_minutes
+        if self._last_result is not None:
+            return 0.0
+        return None
+
+    @property
+    def status(self) -> str | None:
+        """
+        Human-readable status string for the status sensor.
+
+        Priority: button override > fresh result > None (RestoreSensor fallback).
+        """
+        if self._status_override is not None:
+            return self._status_override
+        if self._last_result is None:
+            return None  # RestoreSensor will supply the previous value
+        if self._last_result.should_water:
+            return "Water needed"
+        from .irrigator import SKIP_BUCKET_SUFFICIENT, SKIP_FORECAST_RAIN_SUFFICIENT
+
+        return {
+            SKIP_BUCKET_SUFFICIENT: "Skipped: soil ok",
+            SKIP_FORECAST_RAIN_SUFFICIENT: "Skipped: rain forecast",
+        }.get(self._last_result.skip_reason or "", "Skipped")
 
     # -- Lifecycle -------------------------------------------------------------
 
@@ -266,6 +321,9 @@ class ZoneCoordinator:
     async def _async_run(self, today: date) -> None:
         """Full daily calculation cycle."""
         from homeassistant.helpers.dispatcher import async_dispatcher_send
+
+        # Clear any button-set status override — this calculation is authoritative
+        self._status_override = None
 
         _LOGGER.info(
             "coordinator | zone=%s | calculation started for %s",
@@ -375,6 +433,7 @@ class ZoneCoordinator:
 
         self._bucket.add_irrigation(pending.water_mm)
         self._pending = None
+        self._status_override = "Watered"
         await self._store.async_save_bucket_and_pending(
             self.entry.entry_id, self._bucket, None
         )
@@ -395,6 +454,7 @@ class ZoneCoordinator:
 
         self._bucket.reset()
         self._pending = None
+        self._status_override = "Skipped: soil ok"
         await self._store.async_save_bucket_and_pending(
             self.entry.entry_id, self._bucket, None
         )

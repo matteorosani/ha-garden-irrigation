@@ -69,6 +69,7 @@ class CropDefinition:
     l_dev: int
     l_mid: int
     l_late: int
+    threshold_pct: float = 0.50  # fraction of max_capacity; defaults to 50%
 
     @property
     def total_days(self) -> int:
@@ -112,6 +113,7 @@ def _parse_crops_file(path: str) -> dict[str, CropDefinition]:
             l_dev=int(entry["l_dev"]),
             l_mid=int(entry["l_mid"]),
             l_late=int(entry["l_late"]),
+            threshold_pct=float(entry.get("threshold_pct", 0.50)),
         )
         registry[crop.id] = crop
     return registry
@@ -166,6 +168,47 @@ def get_crop(crop_id: str) -> CropDefinition:
 def available_crops() -> list[CropDefinition]:
     """All crops in the library, sorted alphabetically by name."""
     return sorted(load_crops().values(), key=lambda c: c.name)
+
+
+# ── Threshold calculation ────────────────────────────────────────────────────
+
+
+def threshold_for_zone(
+    crop_ids: list[str],
+    max_capacity: float,
+) -> tuple[float, str]:
+    """
+    Compute the low_threshold [mm] for a mixed crop zone.
+
+    Uses the most sensitive crop in the zone — the one with the highest
+    threshold_pct (lowest FAO-56 depletion fraction p). This ensures we
+    always water for the most demanding plant.
+
+    Parameters
+    ----------
+    crop_ids     : list of crop ID strings from crops.json
+    max_capacity : max soil water storage for this zone [mm]
+
+    Returns
+    -------
+    (threshold_mm, determining_crop_name)
+      threshold_mm          — low_threshold to pass to BucketConfig [mm]
+      determining_crop_name — name of the crop that set the threshold
+                              (useful for sensor attributes / debugging)
+    """
+    registry = load_crops()
+    candidates = [
+        (registry[cid].threshold_pct, registry[cid].name)
+        for cid in crop_ids
+        if cid in registry
+    ]
+
+    if not candidates:
+        # No recognised crops — fall back to 50% (safe middle ground)
+        return max_capacity * 0.50, "default"
+
+    pct, crop_name = max(candidates, key=lambda x: x[0])
+    return round(max_capacity * pct, 1), crop_name
 
 
 # ── Kc interpolation ───────────────────────────────────────────────────────────

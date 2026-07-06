@@ -140,6 +140,9 @@ class BucketLevelSensor(ZoneSensorBase):
         return {
             "max_capacity_mm": b.config.max_capacity,
             "low_threshold_mm": b.config.low_threshold,
+            "low_threshold_pct": round(
+                b.config.low_threshold / b.config.max_capacity * 100, 0
+            ),
             "deficit_mm": round(b.deficit_mm, 1),
             "needs_water": b.needs_water,
         }
@@ -227,9 +230,9 @@ class WateringDurationSensor(ZoneSensorBase):
 
     @property
     def native_value(self) -> float | None:
-        result = self._coordinator.last_result
-        if result is not None:
-            self._attr_native_value = result.duration_minutes
+        duration = self._coordinator.watering_duration_minutes
+        if duration is not None:
+            self._attr_native_value = duration
         return self._attr_native_value  # type: ignore[return-value]
 
     @property
@@ -290,17 +293,11 @@ class StatusSensor(ZoneSensorBase):
 
     @property
     def native_value(self) -> str:
-        result = self._coordinator.last_result
-        if result is None:
-            # No fresh result — return restored value or Idle
-            return self._attr_native_value or "Idle"  # type: ignore[return-value]
-        status = (
-            "Water needed"
-            if result.should_water
-            else _skip_reason_label(result.skip_reason or "")
-        )
-        self._attr_native_value = status
-        return status
+        status = self._coordinator.status
+        if status is not None:
+            self._attr_native_value = status
+        # Fall back to restored value or "Idle" if nothing available yet
+        return self._attr_native_value or "Idle"  # type: ignore[return-value]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

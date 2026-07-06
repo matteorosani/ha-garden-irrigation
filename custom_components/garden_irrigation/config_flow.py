@@ -43,7 +43,6 @@ from .const import (
     CONF_CALCULATION_TIME,
     CONF_CROPS,
     CONF_FLOW_RATE,
-    CONF_LOW_THRESHOLD,
     CONF_MAX_BUCKET,
     CONF_NOTIFY_ENABLED,
     CONF_NOTIFY_TARGET,
@@ -51,7 +50,6 @@ from .const import (
     CONF_ZONE_AREA,
     CONF_ZONE_NAME,
     DEFAULT_CALCULATION_TIME,
-    DEFAULT_LOW_THRESHOLD,
     DEFAULT_MAX_BUCKET,
     DOMAIN,
 )
@@ -89,7 +87,7 @@ _STAGE_OPTIONS = [
 ]
 
 
-# ── Stage <-> planting date helpers ─────────────────────────────────────────────
+# ── Stage ↔ planting date helpers ─────────────────────────────────────────────
 
 
 def _avg_stage_durations(crop_ids: list[str]) -> tuple[int, int, int, int]:
@@ -355,18 +353,7 @@ def _step2_schema(
                     mode=selector.NumberSelectorMode.BOX,
                 )
             ),
-            vol.Required(
-                CONF_LOW_THRESHOLD,
-                default=d.get(CONF_LOW_THRESHOLD, DEFAULT_LOW_THRESHOLD),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=0,
-                    max=200,
-                    step=1,
-                    unit_of_measurement="mm",
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
+            # low_threshold is computed from crop sensitivity at runtime
         }
     )
 
@@ -392,9 +379,6 @@ def _process_step2(user_input: dict[str, Any]) -> tuple[dict[str, Any], dict[str
 
     if not data.get(CONF_CROPS):
         errors[CONF_CROPS] = "no_crops_selected"
-
-    if float(data.get(CONF_LOW_THRESHOLD, 0)) >= float(data.get(CONF_MAX_BUCKET, 1)):
-        errors[CONF_LOW_THRESHOLD] = "threshold_above_max"
 
     if errors:
         return data, errors
@@ -485,7 +469,6 @@ class GardenIrrigationConfigFlow(ConfigFlow, domain=DOMAIN):
                     title=self._data[CONF_ZONE_NAME],
                     data=self._data,
                 )
-            # Re-show form with user's raw input as defaults so nothing is lost
             return self.async_show_form(
                 step_id="zone_params",
                 data_schema=_step2_schema(crops_list, user_input),
@@ -494,7 +477,7 @@ class GardenIrrigationConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="zone_params",
-            data_schema=_step2_schema(),
+            data_schema=_step2_schema(crops_list),
             errors=errors,
         )
 

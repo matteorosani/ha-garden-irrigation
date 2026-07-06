@@ -33,6 +33,7 @@ from garden_irrigation.kc import (
     kc_for_day,
     kc_for_zone,
     load_crops,
+    threshold_for_zone,
 )
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -309,3 +310,57 @@ class TestKcForZone:
         kc_early = kc_for_zone(["tomato"], planting, date(2024, 5, 1))
         kc_peak = kc_for_zone(["tomato"], planting, date(2024, 7, 1))
         assert kc_peak > kc_early
+
+
+# ── threshold_for_zone ────────────────────────────────────────────────────────
+
+
+class TestThresholdForZone:
+    """Tests for the automatic threshold derived from crop sensitivity."""
+
+    def test_single_crop_correct_threshold(self):
+        # lettuce: threshold_pct=0.70 → 70% of 25 mm = 17.5 mm
+        mm, crop = threshold_for_zone(["lettuce"], max_capacity=25.0)
+        assert mm == pytest.approx(17.5)
+        assert crop == "Lettuce"
+
+    def test_most_sensitive_crop_wins(self):
+        # lettuce (0.70) + tomato (0.60) → lettuce wins
+        mm, crop = threshold_for_zone(["tomato", "lettuce"], max_capacity=25.0)
+        assert mm == pytest.approx(17.5)
+        assert crop == "Lettuce"
+
+    def test_all_tolerant_crops_lower_threshold(self):
+        # cucumber (0.50) + zucchini (0.50) → 50% of 25 = 12.5 mm
+        mm, _ = threshold_for_zone(["cucumber", "zucchini"], max_capacity=25.0)
+        assert mm == pytest.approx(12.5)
+
+    def test_scales_with_max_capacity(self):
+        # lettuce at 0.70 with 40 mm max → 28 mm
+        mm, _ = threshold_for_zone(["lettuce"], max_capacity=40.0)
+        assert mm == pytest.approx(28.0)
+
+    def test_empty_list_returns_safe_default(self):
+        # No crops → 50% of max
+        mm, crop = threshold_for_zone([], max_capacity=25.0)
+        assert mm == pytest.approx(12.5)
+        assert crop == "default"
+
+    def test_unknown_crop_ids_ignored(self):
+        # Unknown IDs skipped, known ones still processed
+        mm_clean = threshold_for_zone(["lettuce"], 25.0)[0]
+        mm_junk = threshold_for_zone(["lettuce", "nonexistent"], 25.0)[0]
+        assert mm_clean == pytest.approx(mm_junk)
+
+    def test_all_unknown_returns_default(self):
+        mm, crop = threshold_for_zone(["nonexistent"], max_capacity=25.0)
+        assert mm == pytest.approx(12.5)
+        assert crop == "default"
+
+    def test_three_crops_mixed_zone(self):
+        # tomato(0.60) + pumpkin(0.55) + bean_green(0.55) → tomato wins at 0.60
+        mm, crop = threshold_for_zone(
+            ["tomato", "pumpkin", "bean_green"], max_capacity=25.0
+        )
+        assert mm == pytest.approx(15.0)
+        assert crop == "Tomato"

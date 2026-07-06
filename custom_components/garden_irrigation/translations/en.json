@@ -8,7 +8,7 @@
           "zone_name": "Zone name",
           "calculation_time": "Daily calculation time",
           "notify_enabled": "Send notification after calculation",
-          "notify_target": "Notification services"
+          "notify_target": "Notify services"
         },
         "data_description": {
           "zone_name": "A descriptive name, e.g. \"Vegetable Field\".",
@@ -26,8 +26,7 @@
           "stage_progress": "Progress through this stage",
           "zone_area": "Zone area (m²)",
           "flow_rate": "Drip system flow rate (L/min)",
-          "max_bucket": "Maximum soil water capacity (mm)",
-          "low_threshold": "Watering trigger threshold (mm)"
+          "max_bucket": "Maximum soil water capacity (mm)"
         },
         "data_description": {
           "crops": "Select all crops currently growing. Kc is averaged across them.",
@@ -41,7 +40,6 @@
       }
     },
     "error": {
-      "threshold_above_max": "Watering threshold must be less than the maximum soil capacity.",
       "no_crops_selected": "Select at least one crop."
     },
     "abort": {
@@ -56,7 +54,10 @@
           "zone_name": "Zone name",
           "calculation_time": "Daily calculation time",
           "notify_enabled": "Send notification after calculation",
-          "notify_target": "Notification services"
+          "notify_target": "Notify services"
+        },
+        "data_description": {
+          "notify_target": "Select one or more notification services. If your phone does not appear, open the Home Assistant companion app once to register it, then re-open this form."
         }
       },
       "zone_params": {
@@ -68,13 +69,11 @@
           "stage_progress": "Progress through this stage",
           "zone_area": "Zone area (m²)",
           "flow_rate": "Drip system flow rate (L/min)",
-          "max_bucket": "Maximum soil water capacity (mm)",
-          "low_threshold": "Watering trigger threshold (mm)"
+          "max_bucket": "Maximum soil water capacity (mm)"
         }
       }
     },
     "error": {
-      "threshold_above_max": "Watering threshold must be less than the maximum soil capacity.",
       "no_crops_selected": "Select at least one crop."
     }
   }
